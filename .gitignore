@@ -1,0 +1,12 @@
+node_modules/
+.next/
+out/
+.env
+.env.local
+.env.*.local
+*.tsbuildinfo
+work/
+coverage/
+npm-debug.log*
+public/pdf.worker.min.mjs
+public/pdfjs/

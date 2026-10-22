@@ -1,0 +1,10 @@
+import { z } from "zod";
+import { customerSchema } from "./validation";
+export const emailSchema = z.email().trim().toLowerCase().max(254);
+export const passwordSchema = z.string().min(12, "পাসওয়ার্ড কমপক্ষে ১২ অক্ষরের হতে হবে").max(128);
+export const registerSchema = z.object({ name: z.string().trim().min(2).max(100), email: emailSchema, password: passwordSchema });
+export const loginSchema = z.object({ email: emailSchema, password: z.string().min(1).max(128) });
+export const addressSchema = customerSchema.extend({ id: z.string().max(80).optional(), label: z.string().trim().min(1).max(60) });
+export const reviewSchema = z.object({ rating: z.number().int().min(1).max(5), text: z.string().trim().min(15, "কমপক্ষে ১৫ অক্ষরের মতামত লিখুন").max(2000) });
+export const collectionSchema = z.object({ id: z.string().regex(/^[\w-]{1,80}$/), slug: z.string().regex(/^[a-z0-9-]{1,100}$/), title: z.string().trim().min(2).max(150), description: z.string().trim().min(10).max(1500), reason: z.string().trim().min(10).max(2000), imageAssetId: z.string().max(80).optional(), productIds: z.array(z.string().max(80)).max(100), published: z.boolean(), featured: z.boolean(), sortOrder: z.number().int().min(0).max(1000) }).refine((c) => new Set(c.productIds).size === c.productIds.length, "একই বই দুবার যোগ করা যাবে না");
+export const returnSchema = z.object({ orderId: z.string().max(80), reason: z.string().trim().min(10).max(1500), items: z.array(z.object({ productId: z.string().max(80), quantity: z.number().int().min(1).max(20) })).min(1).max(50) }).refine((r) => new Set(r.items.map((i) => i.productId)).size === r.items.length, "একই বই দুবার দেওয়া হয়েছে");

@@ -18,6 +18,7 @@ export const orderSchema = z.object({
   items: z.array(z.object({ productId: z.string().min(1).max(80), quantity: z.number().int().min(1).max(20) })).min(1).max(50),
   paymentMethod: z.literal("cod"),
   acceptPreorderTerms: z.boolean().optional(),
+  couponCode: z.string().trim().toUpperCase().regex(/^[A-Z0-9_-]{3,30}$/).optional(),
 }).refine((o) => new Set(o.items.map((i) => i.productId)).size === o.items.length, "একই বই একাধিকবার পাঠানো হয়েছে");
 export const productSchema = z.object({
   id: z.string().regex(/^[a-zA-Z0-9_-]{1,60}$/),

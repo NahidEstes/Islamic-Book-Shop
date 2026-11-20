@@ -17,6 +17,11 @@ export function Footer() {
       <div><h3>বইয়ের ভুবন</h3><Link href="/books">সব বই <ArrowUpRight size={13} /></Link><Link href="/books?category=children">শিশুদের বই</Link><Link href="/wishlist">ইচ্ছের তালিকা</Link></div>
       <div><h3>আপনার সহায়তায়</h3><Link href="/orders">অর্ডার ট্র্যাকিং</Link><Link href="/info/delivery">ডেলিভারি ও পেমেন্ট</Link><Link href="/info/returns">রিটার্ন নীতি</Link></div>
       <div><h3>নূর বুকশপ</h3><Link href="/info/about">আমাদের কথা</Link><Link href="/info/contact">যোগাযোগ</Link><Link href="/info/privacy">গোপনীয়তা ও শর্তাবলি</Link></div>
-    </div><div className="container footer-bottom"><span>© ২০২৬ নূর বুকশপ। ভালো বই, সুন্দর জীবন।</span><span>{demo ? "ডেমো স্টোর · বই ও দাম নমুনা" : "ক্যাশ অন ডেলিভারি"}</span><Link href="/admin">স্টোর পরিচালনা <ArrowUpRight size={12} /></Link></div></footer>
+    </div><div className="container footer-bottom">
+      <span>© ২০২৬ নূর বুকশপ। ভালো বই, সুন্দর জীবন।</span>
+      {!demo && <span>ক্যাশ অন ডেলিভারি</span>}
+      <Link href="/admin">স্টোর পরিচালনা <ArrowUpRight size={12} /></Link>
+    </div><p className="container footer-credit" lang="en">Developed by Nahid Estes</p>
+    </footer>
   </>;
 }

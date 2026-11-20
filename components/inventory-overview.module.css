@@ -1,0 +1,403 @@
+.overview {
+  --overview-muted: var(--signature-muted);
+  --overview-line: var(--inventory-line);
+  --overview-warning: #9a3e31;
+  --overview-bar: #277554;
+  --overview-paid: #bd8d30;
+}
+
+:global(.noor-admin[data-theme="dark"]) .overview {
+  --overview-warning: #ffc2b8;
+  --overview-bar: #8cd5ab;
+  --overview-paid: #f0c672;
+}
+
+.rangePanel {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  margin-bottom: 18px;
+}
+
+.rangePanel > label {
+  min-width: 180px;
+}
+
+.rangePanel label > svg {
+  display: inline-block;
+  margin-inline-end: 6px;
+  vertical-align: middle;
+  color: var(--inventory-accent);
+}
+
+.customRange {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.customRange input {
+  min-width: 150px;
+}
+
+.rangeHint,
+.caption,
+.empty {
+  color: var(--overview-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.rangeHint {
+  flex: 1 1 300px;
+  padding-bottom: 7px;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metrics > div {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px;
+  min-width: 0;
+}
+
+.metrics > div > svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--inventory-accent);
+}
+
+.metrics dt {
+  color: var(--overview-muted);
+  font-size: 13px;
+}
+
+.metrics dd {
+  margin-top: 6px;
+  font-size: clamp(19px, 2vw, 28px);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.twoColumns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.overview .card:global(.panel) {
+  min-width: 0;
+  padding: 20px;
+}
+
+.cardHeading,
+.itemHeading,
+.itemAction {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.overview .cardHeading h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  font-size: clamp(19px, 1.8vw, 24px);
+}
+
+.cardHeading h2 svg {
+  flex: none;
+  color: var(--inventory-accent);
+}
+
+.count,
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid var(--overview-line);
+  border-radius: 99px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.count {
+  color: var(--inventory-accent);
+}
+
+.caption {
+  margin: 6px 0 12px;
+}
+
+.scrollList,
+.invoices,
+.activities {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.scrollList {
+  max-height: 350px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.scrollList > li {
+  padding: 14px 0;
+  border-top: 1px solid var(--overview-line);
+}
+
+.scrollList p {
+  margin-top: 5px;
+  color: var(--overview-muted);
+  font-size: 13px;
+}
+
+.itemHeading {
+  overflow-wrap: anywhere;
+}
+
+.itemHeading > :first-child {
+  min-width: 0;
+}
+
+.itemHeading a,
+.invoices a:not(:global(.button)),
+.tableScroll a {
+  color: var(--signature-green);
+  font-weight: 600;
+}
+
+.itemAction {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.overview .card :global(.button) {
+  min-height: 38px;
+  padding: 6px 11px;
+  font-size: 12px;
+}
+
+.viewAll {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  color: var(--signature-green);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.viewAll:hover,
+.itemHeading a:hover,
+.invoices a:not(:global(.button)):hover {
+  text-decoration: underline;
+}
+
+.invoices > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding-top: 12px;
+}
+
+.invoices > li > div {
+  min-width: 0;
+  font-size: 13px;
+}
+
+.overview .overdue {
+  color: var(--overview-warning);
+}
+
+.increase {
+  color: var(--signature-green);
+}
+
+.empty {
+  padding: 30px 0;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-top: 15px;
+  font-size: 13px;
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.purchaseSwatch,
+.purchaseBar {
+  background: var(--overview-bar);
+}
+
+.paymentSwatch,
+.paymentBar {
+  background: var(--overview-paid);
+}
+
+.chartScale {
+  margin-top: 12px;
+  color: var(--overview-muted);
+  font-size: 12px;
+}
+
+.chartScroll {
+  max-width: 100%;
+  overflow-x: auto;
+  padding-top: 8px;
+}
+
+.chart {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  min-width: max-content;
+}
+
+.month {
+  flex: 0 0 86px;
+  text-align: center;
+}
+
+.bars {
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  gap: 7px;
+  height: 170px;
+  border-bottom: 1px solid var(--overview-line);
+  background: repeating-linear-gradient(to top, transparent, transparent 41px, var(--overview-line) 42px, transparent 43px);
+}
+
+.bars span {
+  flex: 0 0 24px;
+  border-radius: 4px 4px 0 0;
+}
+
+.month small {
+  display: block;
+  margin-top: 7px;
+  color: var(--overview-muted);
+  font-size: 11px;
+}
+
+.chartValues {
+  margin-top: 14px;
+  color: var(--overview-muted);
+  font-size: 13px;
+}
+
+.chartValues summary {
+  cursor: pointer;
+  color: var(--signature-green);
+}
+
+.tableScroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.tableScroll table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+  font-size: 13px;
+  text-align: start;
+}
+
+.tableScroll :is(th, td) {
+  padding: 10px 7px;
+  border-bottom: 1px solid var(--overview-line);
+  text-align: start;
+}
+
+.tableScroll td {
+  white-space: nowrap;
+}
+
+.activities > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(70px, .5fr) auto;
+  align-items: center;
+  gap: 10px 20px;
+  padding: 12px 0;
+  border-top: 1px solid var(--overview-line);
+  font-size: 14px;
+}
+
+.activities :is(p, time) {
+  color: var(--overview-muted);
+  font-size: 12px;
+}
+
+@media (max-width: 1100px) {
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .twoColumns {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}
+
+@media (max-width: 600px) {
+  .metrics {
+    gap: 8px;
+  }
+
+  .metrics > div {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .rangePanel > label,
+  .customRange,
+  .customRange label {
+    flex: 1 1 140px;
+    min-width: 0;
+  }
+
+  .customRange input {
+    min-width: 0;
+  }
+
+  .rangeHint {
+    padding-bottom: 0;
+  }
+
+  .activities > li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .activities time {
+    grid-column: 1 / -1;
+  }
+}

@@ -7,6 +7,8 @@ import { availableQuantity, isPreorder, salePrice } from "../lib/availability";
 import type { Order, OrderInput, OrderStatus, Product } from "../lib/types";
 import type { ShopData } from "../lib/commerce-types";
 import { migrateState } from "./state";
+import { takeStockCost, restoreStockCost } from "../lib/stock-cost";
+import { applyCoupon } from "./coupons";
 
 export class StoreError extends Error { constructor(message: string, public status = 400) { super(message); } }
 export const id = (prefix: string) => `${prefix}-${randomBytes(12).toString("hex")}`;
@@ -25,19 +27,41 @@ export function buildOrder(products: Product[], input: OrderInput, demo: boolean
 }
 export function reserveOrder(d: ShopData, input: OrderInput, demo: boolean, userId?: string) {
   const order = buildOrder(d.products, input, demo, userId);
-  for (const item of order.items) { const p = d.products.find((p) => p.id === item.productId)!; if (item.preorder) p.preorder!.reserved += item.quantity; else p.stock -= item.quantity; }
+  if (input.couponCode) applyCoupon(d, order, input.couponCode);
+  for (const item of order.items) {
+    const p = d.products.find((p) => p.id === item.productId)!;
+    if (item.preorder) p.preorder!.reserved += item.quantity;
+    else {
+      const before = p.stock;
+      item.cost = takeStockCost(p, item.quantity);
+      p.stock -= item.quantity;
+      d.audit.push({ id: id("audit"), actor: userId || "guest", action: "order.reserved", target: p.id, at: new Date().toISOString(), stockChange: { before, after: p.stock } });
+    }
+  }
   d.orders.push(order); return order;
 }
-export function changeOrderStatus(d: ShopData, orderId: string, status: OrderStatus) {
+export function changeOrderStatus(d: ShopData, orderId: string, status: OrderStatus, actor = "system") {
   const o = d.orders.find((o) => o.id === orderId);
   if (!o) throw new StoreError("অর্ডার পাওয়া যায়নি", 404);
   if (!transitions[o.status].includes(status)) throw new StoreError("এই স্ট্যাটাস পরিবর্তন গ্রহণযোগ্য নয়", 409);
   if (status === "shipped" && o.preorderStatus === "awaiting-release") throw new StoreError("প্রি-অর্ডার প্রস্তুত হিসেবে চিহ্নিত করুন", 409);
   if (status === "cancelled") {
     if (d.payments.some((p) => p.orderId === o.id)) throw new StoreError("মূল্য গ্রহণ করা অর্ডারের জন্য রিটার্ন ও রিফান্ডের প্রক্রিয়া ব্যবহার করুন", 409);
-    for (const i of o.items) { const p = d.products.find((p) => p.id === i.productId); if (p) { if (i.preorder && p.preorder) p.preorder.reserved = Math.max(0, p.preorder.reserved - i.quantity); else p.stock += i.quantity; } }
+    for (const i of o.items) {
+      const p = d.products.find((p) => p.id === i.productId);
+      if (p) {
+        if (i.preorder && p.preorder) p.preorder.reserved = Math.max(0, p.preorder.reserved - i.quantity);
+        else {
+          const before = p.stock;
+          if (i.cost) restoreStockCost(p, i.quantity - i.cost.unknownQuantity, i.cost.knownMinor);
+          p.stock += i.quantity;
+          d.audit.push({ id: id("audit"), actor, action: "order.restocked", target: p.id, at: new Date().toISOString(), stockChange: { before, after: p.stock } });
+        }
+      }
+    }
   }
   if (status === "delivered" && o.preorderStatus === "ready") o.preorderStatus = "fulfilled";
+  if (status === "delivered") o.deliveredAt = new Date().toISOString();
   o.status = status; return o;
 }
 export interface Store {
@@ -81,10 +105,11 @@ export class FileStore extends BaseStore {
 }
 type RecordDoc = { id: string; [key: string]: unknown };
 type StateKey = keyof ShopData;
-const names: Record<StateKey, string> = { products: "Book", orders: "Order", users: "CustomerAccount", sessions: "CustomerSession", tokens: "IdentityToken", reviews: "BookReview", collections: "EditorialCollection", assets: "MediaAsset", subscriptions: "StockSubscription", notifications: "CustomerNotification", outbox: "MailOutbox", returns: "BookReturn", payments: "OrderPayment", refunds: "OrderRefund", audit: "ShopAudit" };
+const names: Record<StateKey, string> = { products: "Book", orders: "Order", users: "CustomerAccount", sessions: "CustomerSession", tokens: "IdentityToken", staffInvitations: "StaffInvitation", suppliers: "BookSupplier", purchases: "BookPurchase", supplierPayments: "SupplierPayment", reviews: "BookReview", collections: "EditorialCollection", assets: "MediaAsset", subscriptions: "StockSubscription", notifications: "CustomerNotification", outbox: "MailOutbox", returns: "BookReturn", payments: "OrderPayment", refunds: "OrderRefund", audit: "ShopAudit", coupons: "ShopCoupon", expenses: "ShopExpense", imports: "CatalogImport" };
 const models = Object.fromEntries(Object.entries(names).map(([key, name]) => {
   const schema = new mongoose.Schema({ id: { type: String, required: true, unique: true } }, { versionKey: false, strict: false });
   if (key === "users") schema.index({ email: 1 }, { unique: true });
+  if (key === "staffInvitations") schema.index({ email: 1 }, { unique: true });
   if (key === "products" || key === "collections") schema.index({ slug: 1 }, { unique: true });
   if (key === "reviews" || key === "subscriptions") schema.index({ userId: 1, productId: 1 }, { unique: true });
   return [key, (mongoose.models[name] || mongoose.model<RecordDoc>(name, schema)) as mongoose.Model<RecordDoc>];

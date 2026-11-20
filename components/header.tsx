@@ -2,20 +2,24 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Heart, Menu, Search, ShoppingCart, UserRound, X, ChevronDown, Truck, ArrowUpRight } from "lucide-react";
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useRef, useState, Suspense } from "react";
 import { useStore } from "./store-provider";
 import { Logo } from "./logo";
 import { bn } from "@/lib/catalog";
 import { useAuth } from "./auth-provider";
 
 function HeaderContent() {
-  const { count, wishlist } = useStore();
+  const { count, wishlist, products } = useStore();
   const { user } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
   const [query, setQuery] = useState(params.get("q") || "");
   const [menu, setMenu] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchBox = useRef<HTMLFormElement>(null);
+  const suggestions = query.trim().length >= 2 ? products.filter((p) => `${p.title} ${p.author} ${p.isbn || ""}`.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 5) : [];
+  useEffect(() => { function outside(event: PointerEvent) { if (!searchBox.current?.contains(event.target as Node)) setSearchOpen(false); } document.addEventListener("pointerdown", outside); return () => document.removeEventListener("pointerdown", outside); }, []);
   useEffect(() => { setMenu(false); setQuery(params.get("q") || ""); }, [pathname, params]);
   return <>
     <div className="announcement"><div className="container announcement-inner"><span>বইয়ের পাতায় খুঁজে নিন আলোকিত জীবনের পথ</span><Link href="/info/delivery"><Truck size={14} /> ডেলিভারি তথ্য <ArrowUpRight size={13} /></Link></div></div>
@@ -23,8 +27,9 @@ function HeaderContent() {
       <div className="container header-main">
         <button className="mobile-menu icon-button" aria-label="মেনু খুলুন" aria-expanded={menu} onClick={() => setMenu(!menu)}>{menu ? <X /> : <Menu />}</button>
         <Logo light />
-        <form className="search-form" role="search" onSubmit={(e) => { e.preventDefault(); router.push(`/books${query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ""}`); }}>
-          <Search size={21} /><input type="search" aria-label="বই বা লেখকের নাম" placeholder="বই বা লেখকের নাম লিখুন..." value={query} onChange={(e) => setQuery(e.target.value)} /><button type="submit">খুঁজুন <span className="search-key">↵</span></button>
+        <form ref={searchBox} className="search-form" role="search" onSubmit={(e) => { e.preventDefault(); setSearchOpen(false); router.push(`/books${query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ""}`); }} onKeyDown={(e) => { if (e.key === "Escape") setSearchOpen(false); if (e.key === "ArrowDown" && e.target instanceof HTMLInputElement && suggestions.length) { e.preventDefault(); searchBox.current?.querySelector<HTMLAnchorElement>(".search-suggestions a")?.focus(); } }}>
+          <Search size={21} /><input type="search" aria-label="বই বা লেখকের নাম" aria-controls={searchOpen && suggestions.length ? "quick-book-search" : undefined} placeholder="বই, লেখক বা ISBN দিয়ে খুঁজুন…" value={query} onFocus={() => setSearchOpen(true)} onChange={(e) => { setQuery(e.target.value); setSearchOpen(true); }} /><button type="submit">খুঁজুন <span className="search-key">↵</span></button>
+          {searchOpen && suggestions.length > 0 && <div id="quick-book-search" className="search-suggestions" role="region" aria-label="দ্রুত অনুসন্ধানের ফল"><ul>{suggestions.map((p) => <li key={p.id}><Link href={`/books/${p.slug}`} onClick={() => setSearchOpen(false)}><strong>{p.title}</strong><small>{p.author}</small></Link></li>)}</ul><Link href={`/books?q=${encodeURIComponent(query.trim())}`} onClick={() => setSearchOpen(false)}>সব ফলাফল দেখুন →</Link></div>}
         </form>
         <div className="header-actions">
           <Link href="/account" className="header-action" aria-label="পাঠকের অ্যাকাউন্ট"><UserRound /><span>{user ? "আমার অ্যাকাউন্ট" : "লগইন / নিবন্ধন"}</span></Link>

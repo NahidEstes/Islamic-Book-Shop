@@ -1,0 +1,96 @@
+.noor-admin[lang="en"] {
+  --font-serif: Georgia, var(--font-bengali), serif;
+  font-family: system-ui, var(--font-bengali), sans-serif;
+}
+
+.signature-preferences-bar { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+.signature-preferences { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.signature-preferences :is(select, button) {
+  width: auto;
+  min-height: 39px;
+  padding: 6px 10px;
+  border: 1px solid #c9bfae;
+  border-radius: 7px;
+  background: #fffefa;
+  color: #224136;
+  font: inherit;
+  font-size: 13px;
+}
+.signature-preferences button { display: inline-flex; align-items: center; gap: 6px; }
+.signature-preferences button:hover { background: #ecefe6; }
+.signature-preferences select:focus-visible, .signature-preferences button:focus-visible { outline-offset: 2px; }
+.signature-entry-main { grid-template-rows: auto minmax(0, 1fr); }
+.signature-entry-main > .signature-preferences { justify-self: end; }
+.signature-toast { color: var(--signature-deep); }
+
+.noor-admin[data-theme="dark"] {
+  color-scheme: dark;
+  --signature-paper: #0e1b17;
+  --signature-surface: #172923;
+  --signature-control: #11221c;
+  --signature-raised: #20372e;
+  --signature-line: #365347;
+  --signature-deep: #e9f7ee;
+  --signature-green: #a5eac1;
+  --signature-gold: #f3ca76;
+  --signature-muted: #afc7b9;
+  --signature-chart-line: #79e4a8;
+  --signature-chart-fill: #61bb87;
+  --signature-chart-axis: #729082;
+  --signature-chart-grid: #38564a;
+  --signature-chart-point: #13251d;
+  --green: #a5eac1;
+  --green-dark: #e9f7ee;
+  --gold: #f3ca76;
+  --line: #365347;
+  --muted: #afc7b9;
+  --ink: #e9f7ee;
+  color: #dceee3;
+}
+
+.noor-admin[data-theme="dark"] :focus-visible { outline-color: #9ee9bd; }
+.noor-admin[data-theme="dark"] .skip-link { background: var(--signature-surface); color: var(--green); }
+.noor-admin[data-theme="dark"] :is(.signature-sidebar, .signature-entry-brand) { background: linear-gradient(155deg, #0b211a, #12322a); }
+.noor-admin[data-theme="dark"] .signature-sidebar { border-inline-end: 1px solid var(--line); scrollbar-color: #628b7d #0b211a; }
+.noor-admin[data-theme="dark"] .signature-brand strong { color: #f3faf4; }
+.noor-admin[data-theme="dark"] .signature-sidebar nav a[aria-current="page"] { background: #27483b; }
+.noor-admin[data-theme="dark"] :is(.panel, .signature-toast) { background: var(--signature-surface); border-color: var(--line); }
+.noor-admin[data-theme="dark"] .signature-toast svg { color: var(--green); }
+.noor-admin[data-theme="dark"] :is(input:not([type="checkbox"]):not([type="file"]), textarea, select) {
+  background: var(--signature-control);
+  border-color: #517063;
+  color: var(--ink);
+}
+.noor-admin[data-theme="dark"] :is(input, textarea)::placeholder { color: #9bb6a9; opacity: 1; }
+.noor-admin[data-theme="dark"] input[type="checkbox"] { accent-color: #85d9a8; }
+.noor-admin[data-theme="dark"] :is(.button-outline, .signature-preferences button) { background: var(--signature-control); border-color: #517063; color: var(--green); }
+.noor-admin[data-theme="dark"] :is(.button-outline, .signature-preferences button):hover:not(:disabled) { background: var(--signature-raised); }
+.noor-admin[data-theme="dark"] .signature-preferences button[aria-pressed="true"] { background: #254637; border-color: #629c7d; color: #d9f8e6; }
+.noor-admin[data-theme="dark"] .button:not(.button-outline):not(:disabled) { background: #a5eac1; color: #10261b; border-color: transparent; }
+.noor-admin[data-theme="dark"] .button:not(.button-outline):not(:disabled):hover { background: #c1f4d5; }
+.noor-admin[data-theme="dark"] .button:disabled { background: #284137; color: #b0cabd; border-color: #456054; }
+.noor-admin[data-theme="dark"] :is(.signature-icon, .signature-demo, .signature-count, .signature-order-demo) { background: #47391f; color: #f6d896; }
+.noor-admin[data-theme="dark"] :is(.signature-panel h2 > svg, .signature-stock b, .rating-stars) { color: var(--gold); }
+.noor-admin[data-theme="dark"] :is(.signature-metric dt, .signature-date-form label, .admin-book p, .admin-order p, .admin-toolbar > p, .admin-return > p, .preview-file-list > div) { color: var(--muted); }
+.noor-admin[data-theme="dark"] .signature-chart-empty { background: #13231d; border-color: #3e6551; }
+.noor-admin[data-theme="dark"] :is(.signature-chart-empty, .signature-stock-empty) svg { color: #9fe2b9; }
+.noor-admin[data-theme="dark"] :is(.signature-stock li, .signature-table tbody tr, .summary-total, .summary-row) { border-color: var(--line); }
+.noor-admin[data-theme="dark"] :is(.signature-more dl > div, .signature-table tbody tr:nth-child(even)) { background: #1c3028; }
+.noor-admin[data-theme="dark"] :is(.signature-table thead, .admin-table th) { background: #273e34; color: #e0f1e7; }
+.noor-admin[data-theme="dark"] .admin-table { background: var(--signature-surface); }
+.noor-admin[data-theme="dark"] .admin-table td { color: #d0e7da; }
+.noor-admin[data-theme="dark"] .signature-status { background: #233f4c; color: #c3eaf5; }
+.noor-admin[data-theme="dark"] .signature-status.status-confirmed { background: #3a3051; color: #e9dbff; }
+.noor-admin[data-theme="dark"] :is(.signature-status.status-shipped, .preorder-tag) { background: #483719; color: #f5d697; }
+.noor-admin[data-theme="dark"] :is(.signature-status.status-delivered, .status-badge) { background: #254b37; color: #bcf0cd; }
+.noor-admin[data-theme="dark"] .signature-status.status-cancelled { background: #502f2c; color: #ffd0c9; }
+.noor-admin[data-theme="dark"] .form-error { background: #492b27; border-color: #805148; color: #ffd5cb; }
+.noor-admin[data-theme="dark"] .notice { background: #3a301d; border-color: #665333; color: #f8dfaa; }
+.noor-admin[data-theme="dark"] .editor-section { border-color: var(--line); }
+.noor-admin[data-theme="dark"] .upload-control { background: #1d382c; border-color: #629c7d; color: #c6f3d8; }
+.noor-admin[data-theme="dark"] .asset-card { background: #21382d; color: #c6dfd0; }
+
+@media (max-width: 740px) {
+  .signature-entry-main { gap: 16px; }
+  .signature-preferences-bar { margin-bottom: 12px; }
+}

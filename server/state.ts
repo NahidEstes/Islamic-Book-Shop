@@ -9,6 +9,8 @@ export function migrateState(raw: Partial<ShopData> = {}): ShopData {
   return {
     products: (raw.products || structuredClone(seedProducts)).map((p) => ({ ...p, sample: p.sample ?? true, tags: p.tags || [], galleryAssetIds: p.galleryAssetIds || [], previewAssetIds: p.previewAssetIds || [], previewPermission: p.previewPermission ?? false, lowStockThreshold: p.lowStockThreshold ?? 5, restockVersion: p.restockVersion || 0 })),
     orders: (raw.orders || []).map((o) => ({ ...o, preorderStatus: o.preorderStatus || "not-applicable" })),
-    users: raw.users || [], sessions: raw.sessions || [], tokens: raw.tokens || [], reviews: raw.reviews || [], collections: raw.collections || structuredClone(initialCollections), assets: raw.assets || [], subscriptions: raw.subscriptions || [], notifications: raw.notifications || [], outbox: raw.outbox || [], returns: raw.returns || [], payments: raw.payments || [], refunds: raw.refunds || [], audit: raw.audit || [],
+    suppliers: raw.suppliers || [], purchases: raw.purchases || [], supplierPayments: raw.supplierPayments || [],
+    coupons: raw.coupons || [], expenses: raw.expenses || [], imports: raw.imports || [],
+    users: raw.users || [], sessions: raw.sessions || [], tokens: raw.tokens || [], staffInvitations: raw.staffInvitations || [], reviews: raw.reviews || [], collections: raw.collections || structuredClone(initialCollections), assets: raw.assets || [], subscriptions: raw.subscriptions || [], notifications: raw.notifications || [], outbox: raw.outbox || [], returns: raw.returns || [], payments: raw.payments || [], refunds: raw.refunds || [], audit: raw.audit || [],
   };
 }

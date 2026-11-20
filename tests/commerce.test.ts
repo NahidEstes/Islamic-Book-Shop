@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import request from "supertest";
 import sharp from "sharp";
 import { PDFDocument } from "pdf-lib";
@@ -60,11 +61,119 @@ test("staff permissions are enforced by API and permission changes revoke sessio
   const created = await owner("post", "/staff").send({ name: "সম্পাদক", email: "editor@example.test", password, role: "catalog" }).expect(201);
   const editor = request.agent(app); await editor.post("/api/auth/login").send({ email: "editor@example.test", password }).expect(200);
   await editor.get("/api/admin/catalog").expect(200); await editor.get("/api/admin/collections").expect(200);
+  await editor.get("/api/admin/products/b001").expect(200);
   for (const endpoint of ["/orders", "/finance", "/staff", "/dashboard"]) await editor.get(`/api/admin${endpoint}`).expect(403);
   await owner("patch", `/staff/${created.body.user.id}`).send({ role: "orders", disabled: false }).expect(200);
   await editor.get("/api/admin/access").expect(401);
   await editor.post("/api/auth/login").send({ email: "editor@example.test", password }).expect(200);
   await editor.get("/api/admin/orders").expect(200); await editor.get("/api/admin/catalog").expect(403);
+  await editor.get("/api/admin/products/b001").expect(403);
+  await editor.post("/api/admin/products").send({}).expect(403);
+});
+
+test("staff invitations are private, replaceable, expiring and accepted only once", async (t) => {
+  const unavailable = await setup(t);
+  const input = { name: "Invited Editor", email: "invited@example.test", role: "catalog" };
+  await unavailable.owner("post", "/staff/invitations").send(input).expect(503);
+  assert.equal((await unavailable.store.snapshot()).staffInvitations.length, 0);
+
+  const delivered: OutboxMessage[] = [];
+  const mailer: Mailer = { available: true, async send(message) { delivered.push(structuredClone(message)); } };
+  const { app, owner, store, register } = await setup(t, mailer);
+  const reader = await register();
+  await reader.agent.post("/api/admin/staff/invitations").send(input).expect(401);
+  const created = await owner("post", "/staff/invitations").send(input).expect(201);
+  assert.equal(created.body.invitation.status, "pending");
+  assert.equal(created.body.invitation.tokenHash, undefined);
+  assert.equal((await store.snapshot()).users.some((user) => user.email === input.email), false);
+  await owner("post", "/staff/invitations").send(input).expect(409);
+  const firstToken = (await store.snapshot()).outbox.find((mail) => mail.type === "invite")!.text.match(/token=([a-f0-9]{64})/)![1];
+  await owner("post", `/staff/invitations/${created.body.invitation.id}/resend`).send({}).expect(200);
+  const stored = await store.snapshot();
+  const replacement = stored.outbox.findLast((mail) => mail.type === "invite")!;
+  const token = replacement.text.match(/token=([a-f0-9]{64})/)![1];
+  assert.notEqual(token, firstToken);
+  assert.equal(stored.staffInvitations[0].tokenHash, tokenHash(token));
+  await request(app).post("/api/auth/accept-invite").send({ token: firstToken, password }).expect(400);
+  const privateList = await owner("get", "/staff").expect("Cache-Control", "private, no-store").expect(200);
+  assert.equal(JSON.stringify(privateList.body).includes(tokenHash(token)), false);
+  await flushOutbox(store, mailer);
+  assert.equal(delivered.filter((mail) => mail.type === "invite").length, 1);
+  assert.ok(!(await store.snapshot()).outbox.some((mail) => mail.type === "invite" && mail.text.includes("token=")));
+  const acceptance = await Promise.all([
+    request(app).post("/api/auth/accept-invite").send({ token, password }),
+    request(app).post("/api/auth/accept-invite").send({ token, password }),
+  ]);
+  assert.deepEqual(acceptance.map((response) => response.status).sort(), [200, 400]);
+  const member = (await store.snapshot()).users.find((user) => user.email === input.email)!;
+  assert.equal(member.role, "catalog");
+  assert.equal(member.emailVerified, true);
+  assert.notEqual(member.passwordHash, password);
+  await owner("post", `/staff/invitations/${created.body.invitation.id}/resend`).send({}).expect(409);
+  const acceptedList = await owner("get", "/staff").expect(200);
+  assert.equal(acceptedList.body.invitations[0].status, "accepted");
+  const agent = request.agent(app);
+  await agent.post("/api/auth/login").send({ email: input.email, password }).expect(200);
+  await agent.get("/api/admin/catalog").expect(200);
+  await agent.get("/api/admin/staff").expect(403);
+  const expired = await owner("post", "/staff/invitations").send({ ...input, email: "expired@example.test" }).expect(201);
+  const expiredToken = (await store.snapshot()).outbox.findLast((mail) => mail.type === "invite")!.text.match(/token=([a-f0-9]{64})/)![1];
+  await store.transaction((data) => { data.staffInvitations.find((invite) => invite.id === expired.body.invitation.id)!.expiresAt = "2000-01-01T00:00:00Z"; });
+  await request(app).post("/api/auth/accept-invite").send({ token: expiredToken, password }).expect(400);
+  assert.equal((await owner("get", "/staff")).body.invitations.find((invite: { id: string }) => invite.id === expired.body.invitation.id).status, "expired");
+});
+
+test("staff sessions, customer promotion, activity and stale permission edits preserve owner access", async (t) => {
+  const { owner, app, store, register } = await setup(t);
+  const customer = await register();
+  assert.equal((await owner("get", "/staff")).body.users.length, 0);
+  const customers = await owner("get", "/staff/customers?q=reader").expect(200);
+  assert.equal(customers.body.users[0].id, customer.user.id);
+  assert.equal(customers.body.users[0].addresses, undefined);
+  await owner("patch", `/staff/${customer.user.id}`).send({ role: "catalog", disabled: false, expected: { role: "customer", disabled: false } }).expect(200);
+  await customer.agent.get("/api/account").expect(401);
+  await customer.agent.post("/api/auth/login").send({ email: customer.user.email, password }).expect(200);
+  const secondSession = request.agent(app);
+  await secondSession.post("/api/auth/login").send({ email: customer.user.email, password }).expect(200);
+  const detail = await owner("get", `/staff/${customer.user.id}`).expect(200);
+  assert.equal(detail.body.user.activeSessions, 2);
+  assert.ok(detail.body.user.lastLoginAt);
+  assert.equal(detail.body.user.authVersion, undefined);
+  assert.equal(detail.body.sessions, undefined);
+  assert.equal(detail.body.activity[0].change.beforeRole, "customer");
+  await owner("patch", `/staff/${customer.user.id}`).send({ role: "orders", disabled: false, expected: { role: "customer", disabled: false } }).expect(409);
+  // Saving identical permissions must not sign out active staff.
+  await owner("patch", `/staff/${customer.user.id}`).send({ role: "catalog", disabled: false }).expect(200);
+  await secondSession.get("/api/admin/catalog").expect(200);
+  await owner("post", `/staff/${customer.user.id}/revoke-sessions`).send({}).expect(200);
+  await customer.agent.get("/api/admin/catalog").expect(401);
+  await secondSession.get("/api/account").expect(401);
+  const revoked = await owner("get", `/staff/${customer.user.id}`).expect(200);
+  assert.equal(revoked.body.user.activeSessions, 0);
+  assert.equal(revoked.body.activity[0].action, "staff.sessions-revoked");
+  await customer.agent.post("/api/auth/login").send({ email: customer.user.email, password }).expect(200);
+  await owner("patch", `/staff/${customer.user.id}`).send({ role: "owner", disabled: false }).expect(200);
+  assert.equal((await owner("get", `/staff/${customer.user.id}`)).body.isLastOwner, true);
+  await owner("patch", `/staff/${customer.user.id}`).send({ role: "customer", disabled: false }).expect(409);
+  await owner("patch", `/staff/${customer.user.id}`).send({ role: "owner", disabled: true }).expect(409);
+  assert.equal((await store.snapshot()).users.find((user) => user.id === customer.user.id)!.disabled, false);
+});
+test("creating a book returns its server-generated ID and the editor loads that one saved record", async (t) => {
+  const { app, owner, store } = await setup(t);
+  const original = (await store.products())[0];
+  const draft = { ...original, slug: "an-editor-test-book", title: "Editor test book" };
+  await request(app).get(`/api/admin/products/${original.id}`).expect(401);
+  await request(app).post("/api/admin/products").send(draft).expect(401);
+  const created = await owner("post", "/products").send(draft).expect(201);
+  const book = created.body.product;
+  assert.match(book.id, /^book-/);
+  assert.notEqual(book.id, original.id);
+  const detail = await owner("get", `/products/${book.id}`).expect("Cache-Control", "private, no-store").expect(200);
+  assert.deepEqual(detail.body, { product: book, assets: [] });
+  await owner("get", "/products/nonexistent-book").expect(404);
+  await owner("put", `/products/${book.id}`).send({ ...book, title: "Updated editor test book" }).expect(200);
+  assert.equal((await owner("get", `/products/${book.id}`).expect(200)).body.product.title, "Updated editor test book");
+  assert.equal((await owner("get", `/products/${original.id}`).expect(200)).body.product.title, original.title);
 });
 test("unconfigured recovery is honest; email verification/reset are single-use and revoke sessions", async (t) => {
   const disabled = await setup(t); const a = await disabled.register();
@@ -138,6 +247,151 @@ test("restock events deduplicate subscriptions and notifications; unconfigured e
   d = await store.snapshot(); assert.equal(d.notifications.length, 2);
   await a.agent.put("/api/account/subscriptions/b001").send({ active: false }).expect(200);
 });
+
+test("adding stock is atomic, idempotent, permission checked and recorded with staff identity", async (t) => {
+  const { owner, register, app, store } = await setup(t);
+  const { agent, user } = await register();
+  const original = (await store.products())[0];
+  await owner("put", `/products/${original.id}`).send({ ...original, stock: 0 }).expect(200);
+  await agent.put(`/api/account/subscriptions/${original.id}`).send({ active: true }).expect(200);
+  const addition = { quantity: 3, requestId: randomUUID() };
+  await request(app).post(`/api/admin/products/${original.id}/stock`).send(addition).expect(401);
+  await agent.get(`/api/admin/products/${original.id}/stock-history`).expect(401);
+  await owner("patch", `/staff/${user.id}`).send({ role: "catalog", disabled: false }).expect(200);
+  await agent.post("/api/auth/login").send({ email: user.email, password }).expect(200);
+  const repeated = await Promise.all([
+    agent.post(`/api/admin/products/${original.id}/stock`).send(addition),
+    agent.post(`/api/admin/products/${original.id}/stock`).send(addition),
+  ]);
+  assert.deepEqual(repeated.map((response) => response.status), [200, 200]);
+  assert.equal((await store.products())[0].stock, 3);
+  await agent.post(`/api/admin/products/${original.id}/stock`).send({ ...addition, quantity: 4 }).expect(409);
+  await agent.post("/api/admin/products/b002/stock").send(addition).expect(409);
+  const independent = await Promise.all([
+    agent.post(`/api/admin/products/${original.id}/stock`).send({ quantity: 4, requestId: randomUUID() }),
+    agent.post(`/api/admin/products/${original.id}/stock`).send({ quantity: 5, requestId: randomUUID() }),
+    request(app).post("/api/orders").send(orderInput),
+  ]);
+  assert.deepEqual(independent.map((response) => response.status), [200, 200, 201]);
+  assert.equal((await store.products())[0].stock, 11);
+  assert.equal((await store.snapshot()).notifications.length, 1);
+  const history = await agent.get(`/api/admin/products/${original.id}/stock-history`).expect("Cache-Control", "private, no-store").expect(200);
+  const additions = history.body.entries.filter((entry: { change: { added?: number } }) => entry.change.added);
+  assert.equal(additions.length, 3);
+  assert.ok(additions.every((entry: { actorName: string }) => entry.actorName === user.name));
+  assert.equal(history.body.entries.find((entry: { change: { after: number } }) => entry.change.after === 0).change.before, original.stock);
+  assert.equal(history.body.entries[0].change.requestId, undefined);
+  for (const quantity of [0, -1, 1.2, 100001]) {
+    await agent.post(`/api/admin/products/${original.id}/stock`).send({ quantity, requestId: randomUUID() }).expect(400);
+  }
+  await agent.post(`/api/admin/products/${original.id}/stock`).send({ quantity: 100000, requestId: randomUUID() }).expect(409);
+  await agent.post("/api/admin/products/missing/stock").send({ quantity: 1, requestId: randomUUID() }).expect(404);
+  await owner("patch", `/staff/${user.id}`).send({ role: "orders", disabled: false }).expect(200);
+  await agent.post("/api/auth/login").send({ email: user.email, password }).expect(200);
+  await agent.post(`/api/admin/products/${original.id}/stock`).send({ quantity: 1, requestId: randomUUID() }).expect(403);
+  await agent.get(`/api/admin/products/${original.id}/stock-history`).expect(403);
+});
+
+test("inventory separates invoices, partial receiving and supplier payments with atomic retries", async (t) => {
+  const { owner, store, app, register } = await setup(t);
+  await store.transaction((data) => { data.products[0].stock = 0; data.products[1].stock = 0; });
+  const supplier = (await owner("post", "/inventory/suppliers").send({ name: "Example Publisher", phone: "01700000000" }).expect(201)).body.supplier;
+  const input = {
+    supplierId: supplier.id, invoiceNo: "BILL-101", date: "2026-11-19",
+    lines: [{ productId: "b001", quantity: 10, unitCost: 180 }, { productId: "b002", quantity: 5, unitCost: 200 }],
+    discount: 100, freight: 200, requestId: randomUUID(),
+  };
+  const purchase = (await owner("post", "/inventory/purchases").send(input).expect(201)).body.purchase;
+  assert.equal(purchase.totalMinor, 290000);
+  assert.equal((await store.products())[0].stock, 0);
+  assert.equal((await owner("post", "/inventory/purchases").send(input).expect(201)).body.purchase.id, purchase.id);
+  await owner("post", "/inventory/purchases").send({ ...input, discount: 99 }).expect(409);
+  await owner("post", "/inventory/purchases").send({ ...input, requestId: randomUUID() }).expect(409);
+  const payment = { amount: 500, reference: "ADVANCE-1", method: "bank", date: input.date, requestId: randomUUID() };
+  await owner("post", `/inventory/purchases/${purchase.id}/payments`).send(payment).expect(201);
+  await owner("post", `/inventory/purchases/${purchase.id}/payments`).send(payment).expect(201);
+  assert.equal((await store.snapshot()).supplierPayments.length, 1);
+  await owner("post", `/inventory/purchases/${purchase.id}/payments`).send({ ...payment, requestId: randomUUID() }).expect(409);
+  await owner("post", `/inventory/purchases/${purchase.id}/payments`).send({ ...payment, amount: 2400.01, reference: "OVER", requestId: randomUUID() }).expect(409);
+  const first = { items: [{ productId: "b001", quantity: 4 }, { productId: "b002", quantity: 2 }], requestId: randomUUID() };
+  await owner("post", `/inventory/purchases/${purchase.id}/receive`).send(first).expect(200);
+  await owner("post", `/inventory/purchases/${purchase.id}/receive`).send(first).expect(200);
+  assert.equal((await store.products())[0].stock, 4);
+  await owner("post", `/inventory/purchases/${purchase.id}/receive`).send({ ...first, items: [{ productId: "b001", quantity: 2 }] }).expect(409);
+  await owner("post", `/inventory/purchases/${purchase.id}/receive`).send({
+    items: [{ productId: "b001", quantity: 1 }, { productId: "b002", quantity: 100 }], requestId: randomUUID(),
+  }).expect(409);
+  assert.equal((await store.products())[0].stock, 4);
+  const remaining = { items: [{ productId: "b001", quantity: 6 }, { productId: "b002", quantity: 3 }], requestId: randomUUID() };
+  const receiving = await Promise.all([
+    owner("post", `/inventory/purchases/${purchase.id}/receive`).send(remaining),
+    owner("post", `/inventory/purchases/${purchase.id}/receive`).send(remaining),
+  ]);
+  assert.deepEqual(receiving.map((response) => response.status), [200, 200]);
+  assert.equal((await store.products())[0].stock, 10);
+  assert.equal((await store.products())[1].stock, 5);
+  await owner("post", `/inventory/purchases/${purchase.id}/payments`).send({ ...payment, amount: 2400, reference: "FINAL", requestId: randomUUID() }).expect(201);
+  const overview = await owner("get", "/inventory").expect("Cache-Control", "private, no-store").expect(200);
+  assert.equal(overview.body.purchases[0].receipts.length, 2);
+  assert.equal(overview.body.payments.reduce((sum: number, row: { amountMinor: number }) => sum + row.amountMinor, 0), 290000);
+  assert.equal(overview.body.movements.filter((entry: { action: string }) => entry.action === "purchase.received").length, 4);
+  const reader = await register();
+  await reader.agent.get("/api/admin/inventory").expect(401);
+  await owner("patch", `/staff/${reader.user.id}`).send({ role: "catalog", disabled: false }).expect(200);
+  await reader.agent.post("/api/auth/login").send({ email: reader.user.email, password }).expect(200);
+  await reader.agent.get("/api/admin/inventory").expect(403);
+  await request(app).get("/api/admin/inventory").expect(401);
+});
+
+test("inventory due dates validate, persist, audit changes and reject stale edits", async (t) => {
+  const { owner, store, register, app } = await setup(t);
+  const supplier = (await owner("post", "/inventory/suppliers").send({ name: "Due date Supplier" }).expect(201)).body.supplier;
+  const input = { supplierId: supplier.id, date: "2026-11-19", dueDate: "2026-11-25", lines: [{ productId: "b001", quantity: 1, unitCost: 100 }], requestId: randomUUID() };
+  await owner("post", "/inventory/purchases").send({ ...input, dueDate: "2026-11-18" }).expect(400);
+  const purchase = (await owner("post", "/inventory/purchases").send(input).expect(201)).body.purchase;
+  assert.equal(purchase.dueDate, "2026-11-25");
+  const url = `/inventory/purchases/${purchase.id}/due-date`;
+  await owner("put", url).send({ dueDate: "2026-11-18", expected: input.dueDate }).expect(400);
+  await owner("put", url).send({ dueDate: "2026-11-26", expected: input.dueDate }).expect(200);
+  await owner("put", url).send({ dueDate: "2026-11-26", expected: input.dueDate }).expect(200);
+  await owner("put", url).send({ dueDate: "2026-11-27", expected: input.dueDate }).expect(409);
+  await owner("put", url).send({ dueDate: "invalid", expected: "2026-11-26" }).expect(400);
+  await owner("put", url).send({ dueDate: null, expected: "2026-11-26" }).expect(200);
+  assert.equal((await store.snapshot()).purchases[0].dueDate, undefined);
+  assert.equal((await store.snapshot()).audit.filter((entry) => entry.action === "purchase.due-date").length, 2);
+  await owner("put", "/inventory/purchases/missing/due-date").send({ dueDate: null, expected: null }).expect(404);
+  const editor = await register();
+  await owner("patch", `/staff/${editor.user.id}`).send({ role: "catalog", disabled: false }).expect(200);
+  await editor.agent.post("/api/auth/login").send({ email: editor.user.email, password }).expect(200);
+  await editor.agent.put(`/api/admin${url}`).send({ dueDate: null, expected: null }).expect(403);
+  await request(app).put(`/api/admin${url}`).send({ dueDate: null, expected: null }).expect(401);
+});
+
+test("inventory stores exact minor-unit costs, protects invoice files and audits reasoned adjustments", async (t) => {
+  const { app, owner, store } = await setup(t);
+  const supplier = (await owner("post", "/inventory/suppliers").send({ name: "Decimal Supplier" }).expect(201)).body.supplier;
+  const image = await sharp({ create: { width: 40, height: 40, channels: 3, background: "#ffffff" } }).png().toBuffer();
+  const asset = (await owner("post", "/inventory/receipts").attach("file", image, { filename: "bill.png", contentType: "image/png" }).expect(201)).body.asset;
+  assert.equal(asset.kind, "receipt");
+  await request(app).get(`/api/media/${asset.id}`).expect(404);
+  const downloaded = await owner("get", `/inventory/receipts/${asset.id}`).expect(200);
+  assert.deepEqual(Buffer.from(downloaded.body.base64, "base64"), image);
+  const catalog = await owner("get", "/catalog").expect(200);
+  assert.equal(catalog.body.assets.some((item: { id: string }) => item.id === asset.id), false);
+  const input = { supplierId: supplier.id, date: "2026-11-19", lines: [{ productId: "b001", quantity: 3, unitCost: .1 }], requestId: randomUUID(), receiptAssetId: asset.id };
+  const purchase = (await owner("post", "/inventory/purchases").send(input).expect(201)).body.purchase;
+  assert.equal(purchase.totalMinor, 30);
+  await owner("post", "/inventory/purchases").send({ ...input, requestId: randomUUID(), discount: .31 }).expect(400);
+  const before = (await store.products())[0].stock;
+  const adjustment = { productId: "b001", delta: -2, reason: "Two copies damaged", requestId: randomUUID() };
+  await owner("post", "/inventory/adjustments").send(adjustment).expect(200);
+  await owner("post", "/inventory/adjustments").send(adjustment).expect(200);
+  assert.equal((await store.products())[0].stock, before - 2);
+  await owner("post", "/inventory/adjustments").send({ ...adjustment, delta: -100000, requestId: randomUUID() }).expect(409);
+  const movement = (await owner("get", "/inventory")).body.movements[0];
+  assert.equal(movement.note, adjustment.reason);
+  assert.equal(movement.change.before, before);
+});
 test("preorders enforce server prices, explicit terms, separate quotas and ready-before-shipping", async (t) => {
   const { register, store, owner } = await setup(t); const a = await register(); const p = (await store.products())[0];
   const preorder = { enabled: true, price: 199, limit: 2, reserved: 0, publicationDate: "2027-01-01", dispatchDate: "2027-01-05", cancellationTerms: "পাঠানোর আগে অনুরোধ করে প্রি-অর্ডার বাতিল করা যাবে।" };
@@ -179,6 +433,11 @@ test("returns, payment reconciliation and refunds enforce quantity and monetary 
   await owner("patch", `/refunds/${refund.id}`).send({ status: "completed", reference: "refund-1", confirmedManual: true }).expect(200);
   await owner("patch", `/refunds/${refund.id}`).send({ status: "completed", reference: "refund-1", confirmedManual: true }).expect(409);
   const report = (await owner("get", "/dashboard").expect(200)).body; assert.equal(report.collected, 510); assert.equal(report.refunded, 450); assert.equal(report.netCollected, 60); assert.equal(report.outstanding, 0);
+  assert.equal(report.salesTrend.reduce((total: number, period: { net: number }) => total + period.net, 0), 60);
+  assert.deepEqual(report.recentOrders[0], { id: o.id, createdAt: o.createdAt, total: 510, status: "delivered", demo: false, customerName: customer.name, quantity: 1 });
+  const empty = (await owner("get", "/dashboard?from=2000-01-01&to=2000-01-31").expect(200)).body;
+  assert.deepEqual(empty.salesTrend, []); assert.deepEqual(empty.recentOrders, []);
+  await owner("get", "/dashboard?from=2001-01-01&to=2000-01-01").expect(400);
   const log = (await owner("get", "/audit")).body.entries; assert.ok(log.some((e: { action: string }) => e.action === "refund.manual-completed")); assert.ok(!JSON.stringify(log).includes(password));
 });
 test("legacy data migrates without losing books, stock or historical guest orders", async (t) => {

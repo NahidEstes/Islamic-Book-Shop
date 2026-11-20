@@ -10,7 +10,7 @@ export async function verifyPassword(password: string, encoded?: string) {
   const actual = await derive(password, salt); const expected = Buffer.from(parts?.[2] || "00".repeat(64), "hex");
   return !!encoded && expected.length === actual.length && timingSafeEqual(actual, expected);
 }
-export const publicUser = (user: User): PublicUser => { const { passwordHash: _secret, ...safe } = user; return safe; };
+export const publicUser = (user: User): PublicUser => { const { passwordHash: _secret, authVersion: _version, ...safe } = user; return safe; };
 export class AuthService {
   constructor(private store: Store) {}
   async register(input: { name: string; email: string; password: string }) {
@@ -26,14 +26,16 @@ export class AuthService {
     const verified = await verifyPassword(password, found?.passwordHash);
     if (!verified || !found || found.disabled) throw new StoreError("ইমেইল বা পাসওয়ার্ড সঠিক নয়", 401);
     const raw = randomBytes(32).toString("hex"); const expiresAt = new Date(Date.now() + 7 * 86400000).toISOString();
-    await this.store.transaction((d) => {
+    const user = await this.store.transaction((d) => {
       const current = d.users.find((u) => u.id === found.id);
-      if (!current || current.disabled || current.passwordHash !== found.passwordHash) throw new StoreError("আবার লগইন করুন", 401);
+      if (!current || current.disabled || current.passwordHash !== found.passwordHash || current.authVersion !== found.authVersion) throw new StoreError("আবার লগইন করুন", 401);
       d.sessions = d.sessions.filter((s) => Date.parse(s.expiresAt) > Date.now());
       d.tokens = d.tokens.filter((s) => Date.parse(s.expiresAt) > Date.now());
-      d.sessions.push({ id: tokenHash(raw), userId: current.id, expiresAt });
+      current.lastLoginAt = new Date().toISOString();
+      d.sessions.push({ id: tokenHash(raw), userId: current.id, expiresAt, createdAt: current.lastLoginAt });
+      return publicUser(current);
     });
-    return { raw, expiresAt, user: publicUser(found) };
+    return { raw, expiresAt, user };
   }
   async resolve(raw?: string) {
     if (!raw || !/^[a-f0-9]{64}$/.test(raw)) return null;

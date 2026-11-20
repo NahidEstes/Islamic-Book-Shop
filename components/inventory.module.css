@@ -1,0 +1,336 @@
+.workspace {
+  --inventory-card: #fffefa;
+  --inventory-line: var(--signature-line);
+  --inventory-control: #fffef9;
+  --inventory-accent: var(--signature-green);
+  color: var(--signature-deep);
+}
+
+:global(.noor-admin[data-theme="dark"]) .workspace {
+  --inventory-card: #122c24;
+  --inventory-line: #315449;
+  --inventory-control: #10271f;
+  --inventory-accent: var(--signature-gold);
+}
+
+.workspace h2 {
+  margin-bottom: 12px;
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.workspace h3 {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--inventory-line);
+}
+
+.tabs a {
+  min-height: 44px;
+  margin-bottom: -1px;
+  padding: 8px 12px;
+  border-bottom: 3px solid transparent;
+  color: var(--signature-muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.tabs a:is(:hover, [aria-current="page"]) {
+  color: var(--inventory-accent);
+}
+
+.tabs a[aria-current="page"] {
+  border-color: var(--inventory-accent);
+}
+
+.workspace :global(.panel) {
+  margin-bottom: 18px;
+  border-color: var(--inventory-line);
+  background: var(--inventory-card);
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metrics > div {
+  padding: 18px;
+}
+
+.metrics dt {
+  color: var(--signature-muted);
+  font-size: 13px;
+}
+
+.metrics dd {
+  margin-top: 6px;
+  font-size: clamp(19px, 2vw, 28px);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.overviewLinks,
+.sectionHeading,
+.actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+
+.overviewLinks {
+  margin-bottom: 24px;
+}
+
+.sectionHeading {
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.sectionHeading h2 {
+  margin: 0;
+}
+
+.tableWrap a,
+.overviewLinks a,
+.actions a,
+.textButton,
+.actions > button:not(:global(.button)) {
+  color: var(--signature-green);
+}
+
+.actions a,
+.overviewLinks a,
+.textButton {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.textButton {
+  min-height: 36px;
+  text-align: start;
+}
+
+.tableWrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.workspace .tableWrap:global(.panel) {
+  padding: 0;
+}
+
+.tableWrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  text-align: start;
+}
+
+.tableWrap :is(th, td) {
+  padding: 13px 15px;
+  text-align: start;
+  vertical-align: top;
+}
+
+.tableWrap thead {
+  color: var(--signature-muted);
+  font-size: 13px;
+}
+
+.tableWrap tbody tr {
+  border-top: 1px solid var(--inventory-line);
+}
+
+.tableWrap td {
+  white-space: nowrap;
+}
+
+.tableWrap small {
+  display: block;
+  margin-top: 4px;
+  color: var(--signature-muted);
+  font-weight: 400;
+}
+
+.badge {
+  display: inline-block;
+  padding: 3px 9px;
+  border: 1px solid var(--inventory-line);
+  border-radius: 99px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.workspace label {
+  min-width: 0;
+  color: var(--signature-deep);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.workspace :is(input:not([type="checkbox"]), select, textarea) {
+  width: 100%;
+  min-height: 44px;
+  border-color: var(--inventory-line);
+  background: var(--inventory-control);
+  color: var(--signature-deep);
+  font-size: 16px;
+}
+
+.form {
+  display: grid;
+  gap: 16px;
+}
+
+.form h2 {
+  margin: 0;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.filters {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.filters > label {
+  flex: 1 1 220px;
+}
+
+.search {
+  display: block;
+  max-width: 500px;
+  margin-bottom: 18px;
+}
+
+.workspace .checkbox {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.checkbox input {
+  width: 18px;
+  height: 18px;
+}
+
+.lines {
+  display: grid;
+  min-width: 0;
+  gap: 14px;
+  border: 0;
+  padding: 0;
+}
+
+.lines legend {
+  padding: 0 0 10px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.purchaseLine {
+  display: grid;
+  grid-template-columns: minmax(180px, 2fr) minmax(80px, .65fr) minmax(150px, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--inventory-line);
+}
+
+.total,
+.totals > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.total {
+  padding-top: 14px;
+  border-top: 1px solid var(--inventory-line);
+  font-size: 20px;
+}
+
+.totals {
+  display: grid;
+  gap: 8px;
+  max-width: 500px;
+  width: 100%;
+  justify-self: end;
+}
+
+.totals div:last-child {
+  padding-top: 8px;
+  border-top: 1px solid var(--inventory-line);
+  font-weight: 700;
+}
+
+.muted,
+.empty {
+  color: var(--signature-muted);
+  font-size: 13px;
+}
+
+.empty {
+  padding: 22px;
+  text-align: center;
+}
+
+.form > .button,
+.lines > .button {
+  justify-self: start;
+}
+
+@media (max-width: 950px) {
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .purchaseLine {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .purchaseLine > label:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 600px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workspace :global(.panel):not(.tableWrap) {
+    padding: 16px;
+  }
+
+  .tabs {
+    gap: 0 3px;
+  }
+
+  .tabs a {
+    padding-inline: 7px;
+    font-size: 13px;
+  }
+
+  .purchaseLine {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

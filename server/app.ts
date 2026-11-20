@@ -8,12 +8,19 @@ import { z, ZodError } from "zod";
 import { orderSchema, phoneSchema, productSchema } from "../lib/validation";
 import { registerSchema, loginSchema, emailSchema, passwordSchema, addressSchema, reviewSchema, collectionSchema, returnSchema } from "../lib/commerce-validation";
 import { rolePermissions, roles, type PublicUser, type Permission } from "../lib/commerce-types";
-import { StoreError, type Store, id } from "./store";
+import { StoreError, type Store, id, buildOrder } from "./store";
 import { AuthService, publicUser, verifyPassword, hashPassword } from "./auth";
 import { audit, CommerceService, findUser, ownOrder } from "./commerce";
 import { flushOutbox, smtpMailer, type Mailer } from "./mail";
 import { mediaRouter } from "./media";
 import { salePrice } from "../lib/availability";
+import { StaffService } from "./staff";
+import { InventoryService } from "./inventory";
+import { adjustmentSchema, purchaseDueDateSchema, purchaseSchema, receivingSchema, supplierPaymentSchema, supplierSchema } from "../lib/inventory-validation";
+import { publicOrder, publicProduct, publicReturn } from "../lib/stock-cost";
+import { applyCoupon, CouponService, couponSchema } from "./coupons";
+import { ReportService, expenseSchema, openingCostSchema } from "./reports";
+import { CatalogCsvService } from "./catalog-csv";
 
 export type AppOptions = { appUrl?: string; uploadDir?: string; production?: boolean; mailer?: Mailer };
 const sessionCookie = "noor_session";
@@ -21,8 +28,13 @@ function readCookie(req: Request) { return req.headers.cookie?.split(";").map((s
 export function createApp(store: Store, adminKey = "", options: AppOptions = {}) {
   const app = express(); const auth = new AuthService(store); const appUrl = options.appUrl || process.env.PUBLIC_APP_URL || "http://localhost:3000";
   const production = options.production ?? process.env.NODE_ENV === "production"; const mailer = options.mailer || smtpMailer(); const commerce = new CommerceService(store, mailer, appUrl);
+  const staff = new StaffService(store, mailer, appUrl);
+  const inventory = new InventoryService(store, commerce);
+  const coupons = new CouponService(store), reports = new ReportService(store), csv = new CatalogCsvService(store, commerce);
   app.locals.commerce = commerce; app.locals.flushOutbox = () => flushOutbox(store, mailer);
-  app.disable("x-powered-by"); app.set("trust proxy", "loopback"); app.use(helmet()); app.use(express.json({ limit: "64kb" }));
+  app.disable("x-powered-by"); app.set("trust proxy", "loopback"); app.use(helmet());
+  app.use("/api/admin/catalog/import", express.json({ limit: "1mb" }));
+  app.use(express.json({ limit: "64kb" }));
   app.use((req, res, next) => {
     if (!["GET", "HEAD", "OPTIONS"].includes(req.method) && ((req.get("origin") && req.get("origin") !== new URL(appUrl).origin) || req.get("sec-fetch-site") === "cross-site")) { res.status(403).json({ error: "এই উৎস থেকে অনুরোধ অনুমোদিত নয়" }); return; } next();
   });
@@ -63,6 +75,10 @@ export function createApp(store: Store, adminKey = "", options: AppOptions = {})
   app.get("/api/collections/:slug", async (req, res) => { const collection = (await store.snapshot()).collections.find((c) => c.slug === req.params.slug && c.published); if (!collection) throw new StoreError("সংগ্রহ পাওয়া যায়নি", 404); res.json({ collection }); });
 
   app.use("/api/auth", authLimit);
+  app.post("/api/auth/accept-invite", async (req, res) => {
+    const input = z.object({ token: z.string().regex(/^[a-f0-9]{64}$/), password: passwordSchema }).parse(req.body);
+    res.json(await staff.accept(input.token, input.password));
+  });
   app.post("/api/auth/register", async (req, res) => { const input = registerSchema.parse(req.body); const user = await auth.register(input); const login = await auth.login(input.email, input.password); res.cookie(sessionCookie, login.raw, { httpOnly: true, secure: production, sameSite: "lax", path: "/", expires: new Date(login.expiresAt) }); const delivery = await commerce.identityEmail(user.id, "verify"); res.status(201).json({ user, ...delivery }); });
   app.post("/api/auth/login", async (req, res) => { const i = loginSchema.parse(req.body); const result = await auth.login(i.email, i.password); res.cookie(sessionCookie, result.raw, { httpOnly: true, secure: production, sameSite: "lax", path: "/", expires: new Date(result.expiresAt) }); res.json({ user: result.user }); });
   app.get("/api/auth/me", (_req, res) => res.json({ user: res.locals.user || null }));
@@ -88,34 +104,102 @@ export function createApp(store: Store, adminKey = "", options: AppOptions = {})
   app.patch("/api/account/notifications/:id", async (req, res) => { await store.transaction((d) => { const n = d.notifications.find((n) => n.id === req.params.id && n.userId === currentUser(res).id); if (!n) throw new StoreError("বার্তা পাওয়া যায়নি", 404); n.read = true; }); res.json({ ok: true }); });
   app.post("/api/account/returns", async (req, res) => res.status(201).json({ request: await commerce.requestReturn(currentUser(res).id, returnSchema.parse(req.body)) }));
   app.patch("/api/account/returns/:id/withdraw", async (req, res) => { await store.transaction((d) => { const r = d.returns.find((r) => r.id === req.params.id && r.userId === currentUser(res).id); if (!r || r.status !== "requested") throw new StoreError("অনুরোধ প্রত্যাহার করা যাবে না", 409); r.status = "withdrawn"; }); res.json({ ok: true }); });
-  app.post("/api/orders", sensitiveLimit, async (req, res) => res.status(201).json({ order: await store.placeOrder(orderSchema.parse(req.body), currentUser(res)?.id) }));
-  app.post("/api/orders/lookup", sensitiveLimit, async (req, res) => { const i = z.object({ orderId: z.string().trim().min(5).max(60), phone: phoneSchema }).parse(req.body); const order = await store.findOrder(i.orderId.toUpperCase(), i.phone); if (!order) throw new StoreError("অর্ডার নম্বর ও মোবাইল নম্বর মিলিয়ে আবার চেষ্টা করুন।", 404); res.json({ order }); });
+  app.post("/api/orders/quote", sensitiveLimit, async (req, res) => {
+    const input = orderSchema.parse({ customer: { name: "Quote preview", phone: "01700000000", address: "Quote preview address", city: "Dhaka", zone: req.body.zone }, items: req.body.items, couponCode: req.body.couponCode, acceptPreorderTerms: true, paymentMethod: "cod" });
+    const data = await store.snapshot(); const order = buildOrder(data.products, input, store.demo);
+    if (input.couponCode) applyCoupon(data, order, input.couponCode);
+    res.set("Cache-Control", "no-store").json({ subtotal: order.subtotal, delivery: order.delivery, total: order.total, discountMinor: order.coupon?.discountMinor || 0, couponCode: order.coupon?.code || "" });
+  });
+  app.post("/api/orders", sensitiveLimit, async (req, res) => res.status(201).json({ order: publicOrder(await store.placeOrder(orderSchema.parse(req.body), currentUser(res)?.id)) }));
+  app.post("/api/orders/lookup", sensitiveLimit, async (req, res) => { const i = z.object({ orderId: z.string().trim().min(5).max(60), phone: phoneSchema }).parse(req.body); const order = await store.findOrder(i.orderId.toUpperCase(), i.phone); if (!order) throw new StoreError("অর্ডার নম্বর ও মোবাইল নম্বর মিলিয়ে আবার চেষ্টা করুন।", 404); res.json({ order: publicOrder(order) }); });
 
   app.get("/api/admin/access", (_req, res) => res.json({ role: res.locals.role, permissions: res.locals.permissions }));
-  app.get("/api/admin/dashboard", allow("reports"), async (req, res) => { const i = z.object({ from: z.iso.date().optional(), to: z.iso.date().optional() }).parse(req.query); if (i.from && i.to && i.from > i.to) throw new StoreError("তারিখের পরিসর সঠিক নয়"); res.json(await commerce.dashboard(i.from, i.to)); });
-  app.get("/api/admin/catalog", allow("catalog"), async (_req, res) => { const d = await store.snapshot(); res.json({ products: d.products, assets: d.assets }); });
-  app.get("/api/admin/orders", allow("orders"), async (_req, res) => res.json({ orders: await store.orders(), demo: store.demo }));
-  app.put("/api/admin/products/:id", allow("catalog"), async (req, res) => res.json({ product: await commerce.saveProduct(productSchema.parse({ ...req.body, id: req.params.id }), res.locals.actor) }));
-  app.patch("/api/admin/orders/:id", allow("orders"), async (req, res) => { const status = z.enum(["pending", "confirmed", "shipped", "delivered", "cancelled"]).parse(req.body.status); res.json({ order: await commerce.orderStatus(String(req.params.id), status, res.locals.actor) }); });
-  app.patch("/api/admin/orders/:id/preorder-ready", allow("orders"), async (req, res) => res.json({ order: await commerce.readyPreorder(String(req.params.id), res.locals.actor) }));
+  app.get("/api/admin/reports", allow("reports"), async (req, res) => { const range = z.object({ from: z.iso.date().optional(), to: z.iso.date().optional() }).parse(req.query); if (range.from && range.to && range.from > range.to) throw new StoreError("তারিখের পরিসর সঠিক নয়"); res.set("Cache-Control", "private, no-store").json(await reports.report(range.from, range.to)); });
+  app.post("/api/admin/reports/expenses", allow("finance"), async (req, res) => res.status(201).json({ expense: await reports.expense(expenseSchema.parse(req.body), res.locals.actor) }));
+  app.post("/api/admin/reports/expenses/:id/void", allow("finance"), async (req, res) => res.json({ expense: await reports.voidExpense(String(req.params.id), res.locals.actor) }));
+  app.put("/api/admin/inventory/products/:id/opening-cost", allow("inventory"), async (req, res) => { const product = await reports.openingCost(String(req.params.id), openingCostSchema.parse(req.body), res.locals.actor); res.json({ ok: true, productId: product.id }); });
+  app.get("/api/admin/coupons", allow("promotions"), async (_req, res) => res.set("Cache-Control", "private, no-store").json({ coupons: await coupons.list(), products: (await store.products()).map(({ id, title }) => ({ id, title })) }));
+  app.post("/api/admin/coupons", allow("promotions"), async (req, res) => res.status(201).json({ coupon: await coupons.save(couponSchema.parse(req.body), res.locals.actor) }));
+  app.put("/api/admin/coupons/:id", allow("promotions"), async (req, res) => res.json({ coupon: await coupons.save(couponSchema.parse(req.body), res.locals.actor, String(req.params.id), z.number().int().parse(req.body.expectedVersion)) }));
+  app.get("/api/admin/catalog/export", allow("catalog"), async (_req, res) => res.set("Cache-Control", "private, no-store").json({ csv: await csv.export() }));
+  app.post("/api/admin/catalog/import/preview", allow("catalog"), async (req, res) => res.json(await csv.preview(z.string().max(512000).parse(req.body.csv))));
+  app.post("/api/admin/catalog/import/commit", allow("catalog"), async (req, res) => { const input = z.object({ csv: z.string().max(512000), fingerprint: z.string().regex(/^[a-f0-9]{64}$/), requestId: z.uuid() }).parse(req.body); res.json({ batch: await csv.commit(input.csv, input.fingerprint, input.requestId, res.locals.actor) }); });
+  app.get("/api/admin/dashboard", allow("reports"), async (req, res) => { const i = z.object({ from: z.iso.date().optional(), to: z.iso.date().optional() }).parse(req.query); if (i.from && i.to && i.from > i.to) throw new StoreError("তারিখের পরিসর সঠিক নয়"); res.json(await commerce.dashboard(i.from, i.to, (res.locals.permissions as Permission[]).includes("orders"))); });
+  app.get("/api/admin/catalog", allow("catalog"), async (_req, res) => { const d = await store.snapshot(); res.json({ products: d.products.map(publicProduct), assets: d.assets.filter((asset) => asset.kind !== "receipt") }); });
+  app.get("/api/admin/inventory", allow("inventory"), async (_req, res) => res.set("Cache-Control", "private, no-store").json(await inventory.overview()));
+  app.post("/api/admin/inventory/suppliers", allow("inventory"), async (req, res) => res.status(201).json({ supplier: await inventory.saveSupplier(supplierSchema.parse(req.body), res.locals.actor) }));
+  app.put("/api/admin/inventory/suppliers/:id", allow("inventory"), async (req, res) => res.json({ supplier: await inventory.saveSupplier(supplierSchema.parse(req.body), res.locals.actor, String(req.params.id)) }));
+  app.post("/api/admin/inventory/purchases", allow("inventory"), async (req, res) => res.status(201).json({ purchase: await inventory.createPurchase(purchaseSchema.parse(req.body), res.locals.actor) }));
+  app.put("/api/admin/inventory/purchases/:id/due-date", allow("inventory"), async (req, res) => {
+    const input = purchaseDueDateSchema.parse(req.body);
+    res.json({ purchase: await inventory.setDueDate(String(req.params.id), input.dueDate, input.expected, res.locals.actor) });
+  });
+  app.post("/api/admin/inventory/purchases/:id/receive", allow("inventory"), async (req, res) => res.json({ purchase: await inventory.receive(String(req.params.id), receivingSchema.parse(req.body), res.locals.actor) }));
+  app.post("/api/admin/inventory/purchases/:id/payments", allow("inventory"), async (req, res) => res.status(201).json({ payment: await inventory.pay(String(req.params.id), supplierPaymentSchema.parse(req.body), res.locals.actor) }));
+  app.post("/api/admin/inventory/adjustments", allow("inventory"), async (req, res) => res.json({ product: await inventory.adjust(adjustmentSchema.parse(req.body), res.locals.actor) }));
+  app.get("/api/admin/products/:id", allow("catalog"), async (req, res) => {
+    const data = await store.snapshot();
+    const product = data.products.find((book) => book.id === req.params.id);
+    if (!product) throw new StoreError("বইটি পাওয়া যায়নি", 404);
+    const attached = new Set([product.coverAssetId, ...(product.galleryAssetIds ?? []), ...(product.previewAssetIds ?? [])]);
+    res.set("Cache-Control", "private, no-store").json({ product: publicProduct(product), assets: data.assets.filter((asset) => attached.has(asset.id)) });
+  });
+  app.post("/api/admin/products", allow("catalog"), async (req, res) => {
+    const product = await commerce.saveProduct(productSchema.parse({ ...req.body, id: id("book") }), res.locals.actor);
+    res.status(201).json({ product: publicProduct(product) });
+  });
+  app.post("/api/admin/products/:id/stock", allow("catalog"), async (req, res) => {
+    const input = z.object({
+      quantity: z.number().int().min(1).max(100000),
+      requestId: z.string().uuid(),
+    }).parse(req.body);
+    res.json({ product: publicProduct(await commerce.addStock(String(req.params.id), input.quantity, input.requestId, res.locals.actor)) });
+  });
+  app.get("/api/admin/products/:id/stock-history", allow("catalog"), async (req, res) => {
+    res.set("Cache-Control", "private, no-store").json({ entries: await commerce.stockHistory(String(req.params.id)) });
+  });
+  app.get("/api/admin/orders", allow("orders"), async (_req, res) => res.json({ orders: (await store.orders()).map(publicOrder), demo: store.demo }));
+  app.put("/api/admin/products/:id", allow("catalog"), async (req, res) => res.json({ product: publicProduct(await commerce.saveProduct(productSchema.parse({ ...req.body, id: req.params.id }), res.locals.actor)) }));
+  app.patch("/api/admin/orders/:id", allow("orders"), async (req, res) => { const status = z.enum(["pending", "confirmed", "shipped", "delivered", "cancelled"]).parse(req.body.status); res.json({ order: publicOrder(await commerce.orderStatus(String(req.params.id), status, res.locals.actor)) }); });
+  app.patch("/api/admin/orders/:id/preorder-ready", allow("orders"), async (req, res) => res.json({ order: publicOrder(await commerce.readyPreorder(String(req.params.id), res.locals.actor)) }));
   app.get("/api/admin/reviews", allow("reviews"), async (_req, res) => res.json({ reviews: (await store.snapshot()).reviews.slice().reverse() }));
   app.patch("/api/admin/reviews/:id", allow("reviews"), async (req, res) => { const i = z.object({ status: z.enum(["approved", "rejected", "hidden"]), note: z.string().max(500).default("") }).parse(req.body); res.json({ review: await commerce.moderate(String(req.params.id), i.status, i.note, res.locals.actor) }); });
   app.get("/api/admin/collections", allow("collections"), async (_req, res) => res.json({ collections: (await store.snapshot()).collections }));
   app.put("/api/admin/collections/:id", allow("collections"), async (req, res) => res.json({ collection: await commerce.saveCollection(collectionSchema.parse({ ...req.body, id: req.params.id }), res.locals.actor) }));
-  app.get("/api/admin/returns", allow("returns"), async (_req, res) => res.json({ returns: (await store.snapshot()).returns.slice().reverse() }));
-  app.patch("/api/admin/returns/:id", allow("returns"), async (req, res) => { const i = z.object({ status: z.enum(["approved", "rejected", "received"]), restock: z.boolean().default(false), note: z.string().max(500).default("") }).parse(req.body); res.json({ request: await commerce.returnStatus(String(req.params.id), i.status, i.restock, i.note, res.locals.actor) }); });
+  app.get("/api/admin/returns", allow("returns"), async (_req, res) => res.json({ returns: (await store.snapshot()).returns.slice().reverse().map(publicReturn) }));
+  app.patch("/api/admin/returns/:id", allow("returns"), async (req, res) => { const i = z.object({ status: z.enum(["approved", "rejected", "received"]), restock: z.boolean().default(false), note: z.string().max(500).default("") }).parse(req.body); res.json({ request: publicReturn(await commerce.returnStatus(String(req.params.id), i.status, i.restock, i.note, res.locals.actor)) }); });
   app.get("/api/admin/finance", allow("finance"), async (_req, res) => { const d = await store.snapshot(); res.json({ payments: d.payments.slice().reverse(), refunds: d.refunds.slice().reverse() }); });
-  app.post("/api/admin/payments", allow("finance"), async (req, res) => { const i = z.object({ orderId: z.string().max(80), amount: z.number().int().positive(), reference: z.string().trim().min(3).max(150), method: z.enum(["cod", "bank"]), confirmedManual: z.literal(true) }).parse(req.body); res.status(201).json({ payment: await commerce.recordPayment(i.orderId, i.amount, i.reference, i.method, res.locals.actor) }); });
-  app.post("/api/admin/refunds", allow("finance"), async (req, res) => { const i = z.object({ returnId: z.string().max(80), amount: z.number().int().positive(), method: z.enum(["cash", "bank"]) }).parse(req.body); res.status(201).json({ refund: await commerce.createRefund(i.returnId, i.amount, i.method, res.locals.actor) }); });
+  app.post("/api/admin/payments", allow("finance"), async (req, res) => { const i = z.object({ orderId: z.string().max(80), amount: z.number().positive().max(100000000).refine((n) => Math.abs(n * 100 - Math.round(n * 100)) < .00001, "সর্বোচ্চ দুই দশমিক ঘর ব্যবহার করুন।"), reference: z.string().trim().min(3).max(150), method: z.enum(["cod", "bank"]), confirmedManual: z.literal(true) }).parse(req.body); res.status(201).json({ payment: await commerce.recordPayment(i.orderId, i.amount, i.reference, i.method, res.locals.actor) }); });
+  app.post("/api/admin/refunds", allow("finance"), async (req, res) => { const i = z.object({ returnId: z.string().max(80), amount: z.number().positive().max(100000000).refine((n) => Math.abs(n * 100 - Math.round(n * 100)) < .00001, "সর্বোচ্চ দুই দশমিক ঘর ব্যবহার করুন।"), method: z.enum(["cash", "bank"]) }).parse(req.body); res.status(201).json({ refund: await commerce.createRefund(i.returnId, i.amount, i.method, res.locals.actor) }); });
   app.patch("/api/admin/refunds/:id", allow("finance"), async (req, res) => { const i = z.object({ status: z.enum(["completed", "cancelled"]), reference: z.string().max(150).default(""), confirmedManual: z.boolean().default(false) }).parse(req.body); res.json({ refund: await commerce.finishRefund(String(req.params.id), i.status, i.reference, i.confirmedManual, res.locals.actor) }); });
-  app.get("/api/admin/staff", allow("staff"), async (_req, res) => res.json({ users: (await store.snapshot()).users.map(publicUser) }));
+  app.get("/api/admin/staff", allow("staff"), async (_req, res) => res.set("Cache-Control", "private, no-store").json(await staff.overview()));
+  app.get("/api/admin/staff/customers", allow("staff"), async (req, res) => {
+    const { q } = z.object({ q: z.string().trim().max(254).default("") }).parse(req.query);
+    res.set("Cache-Control", "private, no-store").json(await staff.customers(q));
+  });
+  app.post("/api/admin/staff/invitations", allow("staff"), async (req, res) => {
+    const input = registerSchema.omit({ password: true }).extend({ role: z.enum(["owner", "manager", "catalog", "orders"]) }).parse(req.body);
+    res.status(201).json(await staff.invite(input, res.locals.actor));
+  });
+  app.post("/api/admin/staff/invitations/:id/resend", allow("staff"), async (req, res) => {
+    res.json(await staff.resend(String(req.params.id), res.locals.actor));
+  });
+  app.get("/api/admin/staff/:id", allow("staff"), async (req, res) => {
+    res.set("Cache-Control", "private, no-store").json(await staff.detail(String(req.params.id)));
+  });
+  app.post("/api/admin/staff/:id/revoke-sessions", allow("staff"), async (req, res) => {
+    res.json(await staff.revokeSessions(String(req.params.id), res.locals.actor));
+  });
   app.post("/api/admin/staff", allow("staff"), async (req, res) => { const i = registerSchema.extend({ role: z.enum(["owner", "manager", "catalog", "orders"]) }).parse(req.body); res.status(201).json({ user: await commerce.staff(i, res.locals.actor) }); });
-  app.patch("/api/admin/staff/:id", allow("staff"), async (req, res) => { const i = z.object({ role: z.enum(roles), disabled: z.boolean() }).parse(req.body); res.json({ user: await commerce.updateStaff(String(req.params.id), i.role, i.disabled, res.locals.actor) }); });
+  app.patch("/api/admin/staff/:id", allow("staff"), async (req, res) => {
+    const input = z.object({ role: z.enum(roles), disabled: z.boolean(), expected: z.object({ role: z.enum(roles), disabled: z.boolean() }).optional() }).parse(req.body);
+    res.json({ user: await commerce.updateStaff(String(req.params.id), input.role, input.disabled, res.locals.actor, input.expected) });
+  });
   app.get("/api/admin/audit", allow("audit"), async (_req, res) => res.json({ entries: (await store.snapshot()).audit.slice(-500).reverse() }));
   app.get("/api/admin/outbox", allow("notifications"), async (_req, res) => res.json({ available: mailer.available, messages: (await store.snapshot()).outbox.slice(-200).reverse().map(({ text: _secret, to: _recipient, ...m }) => m) }));
   app.post("/api/admin/outbox/retry", allow("notifications"), async (_req, res) => { const result = await flushOutbox(store, mailer); res.json(result); });
   app.post("/api/admin/outbox/:id/requeue", allow("notifications"), async (req, res) => { await store.transaction((d) => { const m = d.outbox.find((m) => m.id === req.params.id); if (!m || m.status !== "failed" || (m.expiresAt && Date.parse(m.expiresAt) <= Date.now())) throw new StoreError("এই বার্তাটি নতুন করে কিউতে রাখা যাবে না", 409); m.status = mailer.available ? "pending" : "unavailable"; m.attempts = 0; m.nextAttemptAt = new Date().toISOString(); audit(d, res.locals.actor, "mail.requeue", m.id); }); res.json({ ok: true }); });
-  app.use("/api", mediaRouter(store, allow("catalog"), options.uploadDir || process.env.UPLOAD_DIR || path.resolve("work/uploads")));
+  app.use("/api", mediaRouter(store, allow("catalog"), options.uploadDir || process.env.UPLOAD_DIR || path.resolve("work/uploads"), allow("inventory")));
   app.use((_req, res) => res.status(404).json({ error: "ঠিকানাটি পাওয়া যায়নি" }));
   const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     if (error instanceof ZodError) { res.status(400).json({ error: error.issues[0]?.message || "তথ্য যাচাই করুন" }); return; }

@@ -30,7 +30,7 @@ export async function flushOutbox(store: Store, mailer: Mailer) {
       const m = d.outbox.find((m) => m.id === claimed.id); if (!m || m.status !== "sending") return;
       m.status = success ? "sent" : m.attempts >= 5 ? "failed" : "pending";
       m.nextAttemptAt = new Date(Date.now() + 60000 * 2 ** m.attempts).toISOString(); delete m.leaseUntil;
-      if (success && (m.type === "reset" || m.type === "verify")) m.text = "Identity email accepted by provider; secret link removed.";
+      if (success && (m.type === "reset" || m.type === "verify" || m.type === "invite")) m.text = "Identity email accepted by provider; secret link removed.";
     });
   }
   return { sent, available: true };

@@ -17,11 +17,16 @@ npm run dev
 - Customer account: http://localhost:3000/account
 - Editorial collections: http://localhost:3000/collections
 - Admin: http://localhost:3000/admin
+- Profit & business reports: http://localhost:3000/admin/reports
+- Coupons & offers: http://localhost:3000/admin/coupons
+- Book CSV import/export: http://localhost:3000/admin/books/import
 - API health: http://localhost:3000/api/health
 
 `npm run dev` starts Next.js and Express together. `/api/*` is proxied to the private API through Next.js. `npm run dev:web` and `npm run dev:api` can run the processes separately. PDF workers, fonts, CMaps, colour profiles and WASM resources are copied from the installed PDF.js package by `postinstall`, `predev` and `prebuild`; no external PDF CDN is used.
 
 ## Implemented features
+
+The storefront now includes live search suggestions, price/discount filters, pagination, refreshed book/product/cart/checkout surfaces and server-validated coupon checkout. Reports include sale-time cost snapshots, inventory valuation, customer/supplier balances, dated expenses, CSV export and print. Catalog CSV has a validation preview, atomic commit and stale-preview protection. See [business feature behavior and import rules](docs/business-features.md).
 
 ### Catalog, cover images and preview reader
 

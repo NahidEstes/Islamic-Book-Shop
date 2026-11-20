@@ -8,7 +8,7 @@ import { availableQuantity } from "@/lib/availability";
 type StoreContextType = {
   products: Product[]; loading: boolean; error: string; demo: boolean; ready: boolean;
   cart: CartItem[]; wishlist: string[]; count: number;
-  addToCart: (id: string, quantity?: number) => void;
+  addToCart: (id: string, quantity?: number) => boolean;
   setQuantity: (id: string, quantity: number) => void;
   toggleWishlist: (id: string) => void;
   clearCart: () => void; notify: (message: string) => void; refresh: () => Promise<void>;
@@ -45,11 +45,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => { if (!toast) return; const timeout = setTimeout(() => setToast(""), 3000); return () => clearTimeout(timeout); }, [toast]);
   function addToCart(id: string, quantity = 1) {
     const product = products.find((p) => p.id === id);
-    if (!product) return;
+    if (!product) return false;
     const existing = cart.find((i) => i.productId === id)?.quantity || 0;
-    if (existing + quantity > Math.min(availableQuantity(product), 20)) { setToast("এই পরিমাণ বই বা প্রি-অর্ডার কোটা নেই"); return; }
+    if (existing + quantity > Math.min(availableQuantity(product), 20)) { setToast("এই পরিমাণ বই বা প্রি-অর্ডার কোটা নেই"); return false; }
     setCart((items) => { const found = items.some((i) => i.productId === id); return found ? items.map((i) => i.productId === id ? { ...i, quantity: Math.min(i.quantity + quantity, availableQuantity(product), 20) } : i) : [...items, { productId: id, quantity }]; });
     setToast("বইটি কার্টে যোগ হয়েছে");
+    return true;
   }
   function setQuantity(id: string, quantity: number) {
     if (quantity <= 0) { setCart((items) => items.filter((i) => i.productId !== id)); return; }

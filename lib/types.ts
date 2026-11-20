@@ -32,16 +32,17 @@ export type Product = {
   restockVersion?: number;
   preorder?: Preorder;
   rating?: { average: number; count: number };
+  stockCost?: { quantity: number; valueMinor: number };
 };
 export type Preorder = { enabled: boolean; price: number; limit: number; reserved: number; publicationDate: string; dispatchDate: string; cancellationTerms: string };
 export type CartItem = { productId: string; quantity: number };
 export type Customer = { name: string; phone: string; address: string; city: string; zone: "dhaka" | "outside"; note?: string };
-export type OrderInput = { customer: Customer; items: CartItem[]; paymentMethod: "cod"; acceptPreorderTerms?: boolean };
+export type OrderInput = { customer: Customer; items: CartItem[]; paymentMethod: "cod"; acceptPreorderTerms?: boolean; couponCode?: string };
 export type OrderStatus = "pending" | "confirmed" | "shipped" | "delivered" | "cancelled";
 export type Order = {
   id: string;
   customer: Customer;
-  items: { productId: string; title: string; price: number; quantity: number; preorder?: boolean; dispatchDate?: string; cancellationTerms?: string }[];
+  items: { productId: string; title: string; price: number; quantity: number; preorder?: boolean; dispatchDate?: string; cancellationTerms?: string; discountMinor?: number; cost?: { knownMinor: number; unknownQuantity: number } }[];
   subtotal: number;
   delivery: number;
   total: number;
@@ -53,6 +54,8 @@ export type Order = {
   userId?: string;
   preorderStatus?: "not-applicable" | "awaiting-release" | "ready" | "fulfilled";
   fulfillmentPolicy?: string;
+  deliveredAt?: string;
+  coupon?: { id: string; code: string; discountMinor: number };
 };
 export const statusLabels: Record<OrderStatus, string> = { pending: "অর্ডার গ্রহণ করা হয়েছে", confirmed: "অর্ডার নিশ্চিত", shipped: "ডেলিভারির পথে", delivered: "ডেলিভারি সম্পন্ন", cancelled: "বাতিল" };
 export const paymentStatusLabels = { unpaid: "অপরিশোধিত", partial: "আংশিক পরিশোধিত", paid: "পরিশোধিত", refunded: "সংগৃহীত অর্থ ফেরত দেওয়া হয়েছে" };

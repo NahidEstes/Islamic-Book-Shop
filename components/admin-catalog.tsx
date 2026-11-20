@@ -123,7 +123,7 @@ function ProductEditor({ product, assets, exists, onAsset, onSave }: { product: 
   const [customSlug, setCustomSlug] = useState<string | null>(exists ? product.slug : null);
   const slug = customSlug ?? slugFromTitle(title);
   const [coverPreview, setCoverPreview] = useState("");
-  const coverSrc = draft.coverAssetId ? coverPreview || `/api/media/${draft.coverAssetId}` : undefined;
+  const coverSrc = draft.coverAssetId ? coverPreview || draft.demoAssetUrls?.[draft.coverAssetId] || assets.find((a) => a.id === draft.coverAssetId)?.url || `/api/media/${draft.coverAssetId}` : undefined;
   const [activeSection, setActiveSection] = useState(editorSections[0].id);
   const [validation, setValidation] = useState<{ name: string; message: string } | null>(null);
   const formRef = useRef<HTMLFormElement>(null);

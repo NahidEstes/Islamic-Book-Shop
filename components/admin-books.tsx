@@ -93,6 +93,7 @@ function StockManager({ product, onSaved, onClose }: { product: Product; onSaved
 
 export function AdminCatalog() {
   const { t, bn, money } = useAdminPreferences();
+  const { demoCatalog } = useStore();
   const params = useSearchParams();
   const requested = params.get("tab");
   const tab: StockTab = stockTabs.find((value) => value === requested) ?? "all";
@@ -120,7 +121,7 @@ export function AdminCatalog() {
   return <div className={styles.workspace}>
     <header className="signature-heading">
       <h1>{t("বই ও প্রিভিউ")}</h1>
-      <Link className="button button-outline" href="/admin/books/import">{t("CSV import / export")}</Link>
+      {!demoCatalog && <Link className="button button-outline" href="/admin/books/import">{t("CSV import / export")}</Link>}
       <Link className="button" href={newBookHref}><Plus size={18} aria-hidden="true" />{t("বই যোগ করুন")}</Link>
     </header>
     <AdminResourceState error={error} loading={!data} />

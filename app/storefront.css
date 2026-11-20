@@ -1,6 +1,13 @@
 /* Storefront surfaces share the administration's forest, ivory and gold palette. */
 .deployment-demo-notice { padding:12px 0; background:#fff1cd; color:#594515; border-bottom:1px solid #e9d59e; font-size:13px; line-height:1.8; }
 .deployment-demo-notice >div { display:flex; flex-wrap:wrap; gap:4px 14px; }
+.deployment-demo-notice >div >div:first-child { flex:1 1 450px; }
+.deployment-demo-notice p,.demo-catalog-controls p { font-size:12px; line-height:1.8; margin-top:4px; }
+.demo-catalog-controls { padding:15px 18px; margin:15px 0 24px; border:1px solid #cfb56e; background:#fff1cd; color:#594515; border-radius:10px; font-size:14px; }
+.demo-catalog-actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:8px; }
+.deployment-demo-notice .button,.demo-catalog-controls .button { min-height:40px; padding:8px 12px; color:#594515; border-color:#ab8c3b; background:transparent; font-size:12px; }
+.noor-admin .demo-catalog-controls .button { color:#594515; background:transparent; border-color:#ab8c3b; }
+.noor-admin .demo-catalog-controls :is(strong,p,button) { color:#594515; }
 .site-header { box-shadow:0 5px 20px #073c3212; }
 .search-form { position:relative; border-radius:12px; }
 .search-form input { min-width:0; }

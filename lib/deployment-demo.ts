@@ -9,7 +9,7 @@ export function demoResponse(request: Request, path: string[]) {
   const url = new URL(request.url), route = path.join("/");
   const products = seedProducts.map((p) => ({ ...p, sample: true, tags: [], galleryAssetIds: [], previewAssetIds: [], previewPermission: false, rating: { average: 0, count: 0 } }));
   if (route === "health") return json({ ok: true, demo: true, database: "none", storage: "read-only-demo" });
-  if (route === "config") return json({ demo: true, readOnly: true, emailAvailable: false, paymentMethods: [], delivery: { dhaka: deliveryFee("dhaka"), outside: deliveryFee("outside") } });
+  if (route === "config") return json({ demo: true, readOnly: true, browserCatalog: true, emailAvailable: false, paymentMethods: [], delivery: { dhaka: deliveryFee("dhaka"), outside: deliveryFee("outside") } });
   if (route === "auth/me") return json({ user: null });
   if (route === "products") {
     const query = (url.searchParams.get("q") || "").trim().toLowerCase(), category = url.searchParams.get("category") || "all";

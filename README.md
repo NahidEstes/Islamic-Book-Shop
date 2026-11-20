@@ -90,11 +90,15 @@ Use the existing private `ADMIN_API_KEY` in `.env.local` to open the initial own
 
 ### Database-free Vercel demo
 
-Set `VERCEL_DEMO_MODE=true` and keep `DEMO_MODE=true` (or unset) before rebuilding/redeploying. The Next.js `/api/*` handler then serves the clearly labelled sample catalog and collections without Express, MongoDB or local file storage. Search, filters, wishlist and cart work; cart/wishlist stay in that browser. Account/admin writes, uploads, coupon checkout and order saving are disabled, with an explicit notice. No fake successful saved order is returned. To change the sample books, edit `seedProducts` in `lib/catalog.ts` and redeploy; local admin additions/uploads are not copied into this demo.
+Set `VERCEL_DEMO_MODE=true` and keep `DEMO_MODE=true` (or unset) before rebuilding/redeploying. The Next.js `/api/*` handler serves the clearly labelled sample catalog and collections without Express, MongoDB or server file storage. Search, filters, wishlist and cart work. Real account registration, coupon checkout and order saving remain disabled; no successful saved order is fabricated.
+
+Open `/admin` and select **টেস্ট অ্যাডমিনে প্রবেশ করুন** to test the A-design book catalog without a password or owner key. Add/edit books, prices (৳), stock, cover/gallery images and permitted preview images/PDFs. Save a new book before uploading files, then save again to attach them. The edited catalog also appears on the storefront in that browser. Only the catalog section is available; real staff, inventory purchases, orders and finance are not enabled by this test entry.
+
+Changes and uploaded files live in **IndexedDB in that browser, for that exact site origin**, including across reloads. Other browsers, devices, private sessions and deployment-specific URLs have separate data. They are temporary test data, not a backup: browser eviction, clearing site data, closing a private session or confirming **ডেমো ডেটা Reset** removes them. Reset restores the ten seed books and removes uploaded demo files. Signing out closes that tab's demo admin access but keeps its test catalog. The server API stays read-only and serves its seeds; the browser adapter never bypasses real API authentication. Existing local Express admin data/uploads are not copied to Vercel. To change the initial samples for every visitor, edit `seedProducts` in `lib/catalog.ts` and redeploy.
 
 Without an explicit `VERCEL_DEMO_MODE`, this demo is enabled automatically only on Vercel when `DEMO_MODE` is not `false`, MongoDB is absent and the API URL is absent or loopback. A configured external API or MongoDB disables automatic fallback. `VERCEL_DEMO_MODE=false` disables it explicitly. `DEMO_MODE=false` always prevents the sample fallback, including a conflicting `VERCEL_DEMO_MODE=true` setting. Normal local development keeps the existing Express-backed demo. Switching between the embedded demo and the external API requires rebuilding because rewrites are generated at build time.
 
-This mode is for testing the storefront, not persistent admin data. A persistent hosted deployment still needs the API/database/media setup below.
+This mode tests the storefront and book editor using temporary browser data. Shared, durable admin data still needs the API/database/media setup below.
 
 With no MongoDB URI and `DEMO_MODE=true`, local data persists in `work/data/store.json`; uploaded media defaults to `work/uploads`. This file backend is single-process development storage. Tests use separate temporary stores and do not overwrite the demo store.
 

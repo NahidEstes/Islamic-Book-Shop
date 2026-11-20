@@ -33,6 +33,7 @@ export type Product = {
   preorder?: Preorder;
   rating?: { average: number; count: number };
   stockCost?: { quantity: number; valueMinor: number };
+  demoAssetUrls?: Record<string, string>;
 };
 export type Preorder = { enabled: boolean; price: number; limit: number; reserved: number; publicationDate: string; dispatchDate: string; cancellationTerms: string };
 export type CartItem = { productId: string; quantity: number };

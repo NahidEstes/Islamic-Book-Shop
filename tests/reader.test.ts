@@ -11,7 +11,12 @@ test("preview reader opens, changes image page, zooms, closes and reopens withou
   const values: Record<string, unknown> = { window: dom.window, document: dom.window.document, navigator: dom.window.navigator, HTMLElement: dom.window.HTMLElement, HTMLDialogElement: dom.window.HTMLDialogElement, IS_REACT_ACT_ENVIRONMENT: true };
   for (const [key, value] of Object.entries(values)) { saved.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { configurable: true, writable: true, value }); }
   const previousFetch = globalThis.fetch; let fetched = 0; let closed = 0;
-  globalThis.fetch = async () => { fetched++; return new Response(JSON.stringify({ assets: [{ id: "page1", mime: "image/png", pages: 1, url: "/api/media/page1" }, { id: "page2", mime: "image/png", pages: 1, url: "/api/media/page2" }] }), { headers: { "Content-Type": "application/json" } }); };
+  globalThis.fetch = async (input) => {
+    if (String(input) === "/api/config") return Response.json({ demo: false });
+    assert.equal(String(input), "/api/books/example-book/preview");
+    fetched++;
+    return Response.json({ assets: [{ id: "page1", mime: "image/png", pages: 1, url: "/api/media/page1" }, { id: "page2", mime: "image/png", pages: 1, url: "/api/media/page2" }] });
+  };
   Object.defineProperty(dom.window.HTMLDialogElement.prototype, "showModal", { configurable: true, value: function(this: HTMLDialogElement) { this.setAttribute("open", ""); } });
   Object.defineProperty(dom.window.HTMLDialogElement.prototype, "close", { configurable: true, value: function(this: HTMLDialogElement) { if (this.hasAttribute("open")) { closed++; this.removeAttribute("open"); this.dispatchEvent(new dom.window.Event("close")); } } });
   const root = createRoot(dom.window.document.getElementById("root")!);

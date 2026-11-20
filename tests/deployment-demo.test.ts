@@ -18,7 +18,7 @@ test("database-free demo is explicit or a safe Vercel fallback, and never silent
 
 test("embedded demo supplies catalog/config/collections without auth or storage and never offers order saving", async () => {
   const get = async (route: string) => demoResponse(new Request(`https://shop.example.test/api/${route}`), route.split("?")[0].split("/"));
-  const config = await (await get("config")).json(); assert.equal(config.demo, true); assert.equal(config.readOnly, true); assert.deepEqual(config.paymentMethods, []);
+  const config = await (await get("config")).json(); assert.equal(config.demo, true); assert.equal(config.readOnly, true); assert.equal(config.browserCatalog, true); assert.deepEqual(config.paymentMethods, []);
   const catalog = await (await get("products")).json(); assert.equal(catalog.products.length, 10);
   assert.ok(catalog.products.every((p: { sample: boolean; stockCost?: unknown; previewAssetIds: string[] }) => p.sample && !p.stockCost && p.previewAssetIds.length === 0));
   const sorted = await (await get("products?sort=price-asc&category=life")).json();

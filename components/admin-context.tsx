@@ -15,6 +15,12 @@ export function useAdminResource<T>(path: string) {
   const { request } = useAdmin(); const [data, setData] = useState<T | null>(null); const [error, setError] = useState("");
   const reload = useCallback(async () => { try { const value = await request<T>(path); setData(value); setError(""); } catch (e) { setError((e as Error).message); throw e; } }, [path, request]);
   useEffect(() => { let active = true; void request<T>(path).then((r) => { if (active) { setData(r); setError(""); } }).catch((e) => { if (active) setError(e.message); }); return () => { active = false; }; }, [path, request]);
+  useEffect(() => {
+    const update = () => { void reload().catch(() => {}); };
+    const storage = (event: StorageEvent) => { if (event.key === "noor-demo-catalog-revision-v1") update(); };
+    window.addEventListener("noor-demo-catalog-change", update); window.addEventListener("storage", storage);
+    return () => { window.removeEventListener("noor-demo-catalog-change", update); window.removeEventListener("storage", storage); };
+  }, [reload]);
   return { data, error, reload, setData };
 }
 export function AdminResourceState({ error, loading }: { error: string; loading: boolean }) {

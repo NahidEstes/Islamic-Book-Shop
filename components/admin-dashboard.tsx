@@ -11,6 +11,7 @@ import { roleLabels, type Asset, type Permission, type Role } from "@/lib/commer
 import { AdminContext } from "./admin-context";
 import { useAuth } from "./auth-provider";
 import { useStore } from "./store-provider";
+import { DemoCatalogControls } from "./demo-catalog-controls";
 
 const icons = {
   reports: BarChart3, catalog: BookOpen, inventory: Package, orders: ClipboardList, collections: Layers3,
@@ -32,7 +33,7 @@ export function AdminDashboard({ children }: { children: ReactNode }) {
 function AdminDashboardContent({ children }: { children: ReactNode }) {
   const { t, language, theme } = useAdminPreferences();
   const { user, loading: authLoading, logout } = useAuth();
-  const { refresh, readOnly } = useStore();
+  const { refresh, readOnly, demoCatalog, loading: storeLoading } = useStore();
   const pathname = usePathname();
   const router = useRouter();
   const [key, setKey] = useState("");
@@ -42,9 +43,10 @@ function AdminDashboardContent({ children }: { children: ReactNode }) {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
+  const [demoSignedIn, setDemoSignedIn] = useState(false);
   const ownerInput = useRef<HTMLInputElement>(null);
   const staffId = user && user.role !== "customer" ? user.id : null;
-  const identity = key ? "owner-key" : staffId;
+  const identity = demoCatalog && demoSignedIn ? "browser-demo" : key ? "owner-key" : staffId;
   const access = verified?.identity === identity ? verified.access : null;
   const currentAccess = verified?.pathname === pathname ? access : null;
   const selected = adminSectionForPath(pathname);
@@ -58,6 +60,7 @@ function AdminDashboardContent({ children }: { children: ReactNode }) {
   }), [key]);
 
   useEffect(() => { setReady(true); }, []);
+  useEffect(() => { if (!demoCatalog) return; let active = true; void import("@/lib/browser-demo").then((m) => { if (active) setDemoSignedIn(m.demoAdminSignedIn()); }); return () => { active = false; }; }, [demoCatalog]);
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => setNotice(""), 3200);
@@ -87,6 +90,15 @@ function AdminDashboardContent({ children }: { children: ReactNode }) {
     if (redirect) router.replace(redirect);
   }, [redirect, router]);
 
+  async function enterDemo() {
+    setBusy(true); setError("");
+    try {
+      const { enterDemoAdmin } = await import("@/lib/browser-demo"); await enterDemoAdmin();
+      const result = await api<Access>("/admin/access");
+      const proof = { identity: "browser-demo", pathname, access: result };
+      checked.current = proof; setVerified(proof); setDemoSignedIn(true);
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
   async function authenticate(ownerKey: string) {
     setBusy(true);
     setError("");
@@ -104,6 +116,7 @@ function AdminDashboardContent({ children }: { children: ReactNode }) {
     setBusy(true);
     setError("");
     try {
+      if (demoCatalog) { const { leaveDemoAdmin } = await import("@/lib/browser-demo"); leaveDemoAdmin(); setDemoSignedIn(false); }
       if (staffId) await logout();
       checked.current = null;
       setKey("");
@@ -123,6 +136,7 @@ function AdminDashboardContent({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const upload = useCallback(async (file: File, kind: Asset["kind"], productId?: string) => {
+    if (demoCatalog) { const { browserDemoUpload } = await import("@/lib/browser-demo"); return browserDemoUpload(file, kind, productId); }
     if (file.size > 10 * 1024 * 1024) throw new Error("ফাইল সর্বোচ্চ ১০ মেগাবাইট হতে পারে");
     const body = new FormData();
     body.append("file", file);
@@ -132,10 +146,12 @@ function AdminDashboardContent({ children }: { children: ReactNode }) {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "ফাইল আপলোড হয়নি");
     return data.asset as Asset;
-  }, [key]);
+  }, [key, demoCatalog]);
 
   const skipLink = <a href="#admin-content" className="skip-link">{t("মূল কনটেন্টে যান")}</a>;
-  if (readOnly) return <div className="noor-admin signature-entry" lang={language} data-theme={theme}><div className="signature-entry-brand"><AdminBrand /></div><div className="signature-entry-main"><AdminPreferencesControls /><section className="panel signature-login"><h1>{t("নমুনা বইয়ের ডেমো")}</h1><p>{t("এই ডেমোতে অ্যাডমিন থেকে বই যোগ বা তথ্য সংরক্ষণ চালু নেই। স্থায়ী পরিবর্তনের জন্য API ও ডেটাবেস সংযোগ প্রয়োজন।")}</p><Link className="button" href="/books">{t("বইয়ের দোকানে ফিরুন")}</Link></section></div></div>;
+  if (storeLoading) return <div className="noor-admin signature-entry" lang={language} data-theme={theme}><p role="status">{t("যাচাই হচ্ছে...")}</p></div>;
+  if (demoCatalog && (!demoSignedIn || !access)) return <div className="noor-admin signature-entry" lang={language} data-theme={theme}><div className="signature-entry-brand"><AdminBrand /><Link href="/books">{t("বইয়ের দোকানে ফিরুন")}</Link></div><div className="signature-entry-main"><AdminPreferencesControls /><section className="panel signature-login"><h1>{t("ডেমো অ্যাডমিন")}</h1><p>{t("এখানে বই যোগ, সম্পাদনা, প্রচ্ছদ ও প্রিভিউ আপলোড করে পরীক্ষা করতে পারবেন। তথ্য শুধু এই ব্রাউজারে সংরক্ষিত হবে। বাস্তব পাসওয়ার্ড বা মালিকের কী প্রয়োজন নেই।")}</p>{error && <p className="form-error" role="alert">{t(error)}</p>}<button className="button" disabled={busy} onClick={() => void enterDemo()}>{t(busy ? "অপেক্ষা করুন…" : "টেস্ট অ্যাডমিনে প্রবেশ করুন")}</button></section></div></div>;
+  if (readOnly && !demoCatalog) return <div className="noor-admin signature-entry" lang={language} data-theme={theme}><div className="signature-entry-brand"><AdminBrand /></div><div className="signature-entry-main"><AdminPreferencesControls /><section className="panel signature-login"><h1>{t("নমুনা বইয়ের ডেমো")}</h1><p>{t("এই ডেমোতে অ্যাডমিন থেকে বই যোগ বা তথ্য সংরক্ষণ চালু নেই। স্থায়ী পরিবর্তনের জন্য API ও ডেটাবেস সংযোগ প্রয়োজন।")}</p><Link className="button" href="/books">{t("বইয়ের দোকানে ফিরুন")}</Link></section></div></div>;
   if (!selected && pathname !== "/admin") return children;
   if (!access) return (
     <div className="noor-admin signature-entry" lang={language} data-theme={theme}>
@@ -180,7 +196,7 @@ function AdminDashboardContent({ children }: { children: ReactNode }) {
               })}
             </nav>
             <div className="signature-sidebar-foot">
-              <span>{t(roleLabels[access.role])}</span>
+              <span>{t(demoCatalog ? "ডেমো অ্যাডমিন" : roleLabels[access.role])}</span>
               <Link href="/"><ArrowLeft size={16} />{" " + t("দোকানে ফিরুন")}</Link>
               <button type="button" disabled={busy} onClick={() => void signOut()}><LogOut size={16} />{" " + t("লগআউট")}</button>
             </div>
@@ -188,6 +204,7 @@ function AdminDashboardContent({ children }: { children: ReactNode }) {
         </aside>
         <div className="signature-main" id="admin-content" tabIndex={-1}>
           <div className="signature-preferences-bar"><AdminPreferencesControls /></div>
+          {demoCatalog && <DemoCatalogControls admin t={t} />}
           {error && <p className="form-error signature-error" role="alert">{t(error)}</p>}
           {notice && <p className="toast signature-toast" role="status"><CheckCircle2 size={19} aria-hidden="true" />{notice}</p>}
           <section className="admin-workspace signature-workspace" aria-busy={busy || !currentAccess || Boolean(redirect)}>

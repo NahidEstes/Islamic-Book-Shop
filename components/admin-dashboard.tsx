@@ -32,7 +32,7 @@ export function AdminDashboard({ children }: { children: ReactNode }) {
 function AdminDashboardContent({ children }: { children: ReactNode }) {
   const { t, language, theme } = useAdminPreferences();
   const { user, loading: authLoading, logout } = useAuth();
-  const { refresh } = useStore();
+  const { refresh, readOnly } = useStore();
   const pathname = usePathname();
   const router = useRouter();
   const [key, setKey] = useState("");
@@ -135,6 +135,7 @@ function AdminDashboardContent({ children }: { children: ReactNode }) {
   }, [key]);
 
   const skipLink = <a href="#admin-content" className="skip-link">{t("মূল কনটেন্টে যান")}</a>;
+  if (readOnly) return <div className="noor-admin signature-entry" lang={language} data-theme={theme}><div className="signature-entry-brand"><AdminBrand /></div><div className="signature-entry-main"><AdminPreferencesControls /><section className="panel signature-login"><h1>{t("নমুনা বইয়ের ডেমো")}</h1><p>{t("এই ডেমোতে অ্যাডমিন থেকে বই যোগ বা তথ্য সংরক্ষণ চালু নেই। স্থায়ী পরিবর্তনের জন্য API ও ডেটাবেস সংযোগ প্রয়োজন।")}</p><Link className="button" href="/books">{t("বইয়ের দোকানে ফিরুন")}</Link></section></div></div>;
   if (!selected && pathname !== "/admin") return children;
   if (!access) return (
     <div className="noor-admin signature-entry" lang={language} data-theme={theme}>

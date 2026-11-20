@@ -1,4 +1,6 @@
 export const businessEnglish: Record<string, string> = {
+  "নমুনা বইয়ের ডেমো": "Sample book demo",
+  "এই ডেমোতে অ্যাডমিন থেকে বই যোগ বা তথ্য সংরক্ষণ চালু নেই। স্থায়ী পরিবর্তনের জন্য API ও ডেটাবেস সংযোগ প্রয়োজন।": "This demo does not save admin changes or new books. Connect an API and database to store changes permanently.",
   "পদক্ষেপ": "Actions", "বাতিল করুন": "Cancel", "বাতিল নিশ্চিত করুন": "Confirm cancellation",
   "কোনো বই পাওয়া যায়নি।": "No books found.",
   "স্টকে ক্রয়মূল্য অজানা কপি": "Current stock with unknown costs",

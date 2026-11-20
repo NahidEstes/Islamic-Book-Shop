@@ -88,6 +88,14 @@ Use the existing private `ADMIN_API_KEY` in `.env.local` to open the initial own
 
 ## Storage, migration and production
 
+### Database-free Vercel demo
+
+Set `VERCEL_DEMO_MODE=true` and keep `DEMO_MODE=true` (or unset) before rebuilding/redeploying. The Next.js `/api/*` handler then serves the clearly labelled sample catalog and collections without Express, MongoDB or local file storage. Search, filters, wishlist and cart work; cart/wishlist stay in that browser. Account/admin writes, uploads, coupon checkout and order saving are disabled, with an explicit notice. No fake successful saved order is returned. To change the sample books, edit `seedProducts` in `lib/catalog.ts` and redeploy; local admin additions/uploads are not copied into this demo.
+
+Without an explicit `VERCEL_DEMO_MODE`, this demo is enabled automatically only on Vercel when `DEMO_MODE` is not `false`, MongoDB is absent and the API URL is absent or loopback. A configured external API or MongoDB disables automatic fallback. `VERCEL_DEMO_MODE=false` disables it explicitly. `DEMO_MODE=false` always prevents the sample fallback, including a conflicting `VERCEL_DEMO_MODE=true` setting. Normal local development keeps the existing Express-backed demo. Switching between the embedded demo and the external API requires rebuilding because rewrites are generated at build time.
+
+This mode is for testing the storefront, not persistent admin data. A persistent hosted deployment still needs the API/database/media setup below.
+
 With no MongoDB URI and `DEMO_MODE=true`, local data persists in `work/data/store.json`; uploaded media defaults to `work/uploads`. This file backend is single-process development storage. Tests use separate temporary stores and do not overwrite the demo store.
 
 Older product/order records receive backward-compatible defaults on reads and persist with the next mutation. Existing IDs, prices, stock and historical guest orders are retained. No customer is automatically assigned ownership of an older guest order.

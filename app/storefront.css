@@ -1,4 +1,6 @@
 /* Storefront surfaces share the administration's forest, ivory and gold palette. */
+.deployment-demo-notice { padding:12px 0; background:#fff1cd; color:#594515; border-bottom:1px solid #e9d59e; font-size:13px; line-height:1.8; }
+.deployment-demo-notice >div { display:flex; flex-wrap:wrap; gap:4px 14px; }
 .site-header { box-shadow:0 5px 20px #073c3212; }
 .search-form { position:relative; border-radius:12px; }
 .search-form input { min-width:0; }
